@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<!--
+================================================================
+  永豐銀行 主管考核系統 PoC — 全頁結構目錄大綱
+================================================================
+  1. 全域設定與導覽
+     1-A  Head 與 Tailwind 設定
+     1-B  全域 CSS 與按鈕階層（Primary / Secondary / Ghost / Text Link）
+     1-C  永豐銀行 Logo 向量定義
+     1-D  頂部導覽列
+  2. 個別員工評核頁（登入 → 員工清單 → 點選員工）
+     2-A  員工檔案
+     2-B  歷史資料頁籤（年度目標／歷史考績／360／輪調經歷）
+     2-C  主管自主評價獨立頁（不含 AI）
+     2-D  步驟 ② 人機協作與主管考核評分
+     2-E  評分調整紀錄（可收合）
+     2-F  AI 智慧教練側欄與浮動按鈕
+  3. 登入頁與員工清單
+     3-A  登入頁
+     3-B  員工清單（僅基本資料）
+     3-C  等第分布校準頁（含已儲存草稿與 HR 基準）
+  4. 共用元件
+     4-A  調整原因 Modal
+     4-B  Toast 提示
+  5. Alpine.js 資料層與核心狀態邏輯
+     5-A  常數、帳號與等第設定
+     5-B  員工資料（雙主管各自部屬）
+     5-C  狀態工廠與 Alpine 根物件
+     5-D  登入與頁面導覽
+     5-E  員工清單與檔案計算
+     5-F  評分表單與調整紀錄
+     5-G  送出考核
+  6. AI 智慧教練與雙主管連動邏輯
+     6-A  開場焦點與立場定調
+     6-B  指導型 Prompt Chips 與自由輸入
+     6-C  AI 對話 ↔ 評分連動（套用／跳轉）
+     6-D  草稿即時等第分布統計
+     6-E  AI 跨主管比對提醒
+================================================================
+-->
+<html lang="zh-Hant">
+<head>
+<!-- ===== 區塊 1-A: Head 與 Tailwind 設定 ===== -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主管考核系統 PoC｜永豐銀行 Bank SinoPac</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{brand:{50:'#fff1f2',100:'#ffe1e3',200:'#ffc5ca',300:'#ff9aa3',400:'#f0525f',500:'#e01f33',600:'#cd0013',700:'#a8000f',800:'#86000c',900:'#5e0008'}}}}}
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+<!-- ===== 區塊 1-B: 全域 CSS 與按鈕階層 ===== -->
+<style>
+  [x-cloak]{display:none!important}
+  body{font-family:"Inter","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;background:#faf8f8}
+  .scroll-thin::-webkit-scrollbar{height:5px;width:6px}.scroll-thin::-webkit-scrollbar-thumb{background:#d6d3d1;border-radius:9px}
+  .dot::after{content:"";display:inline-block;width:6px;height:6px;margin-left:3px;border-radius:9px;background:#a8a29e;animation:b 1s infinite}
+  @keyframes b{50%{opacity:.2}}
+  @keyframes float{50%{transform:translateY(calc(-50% - 10px))}}
+  .floaty{animation:float 9s ease-in-out infinite}
+  .hl{transition:box-shadow .3s,background-color .3s}
+
+  /* --- 按鈕階層 1：Primary（品牌高對比實心）— 僅用於關鍵確認動作 --- */
+  .btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:.375rem;white-space:nowrap;background:#cd0013;color:#fff;font-size:.875rem;font-weight:500;padding:.5rem 1.25rem;border-radius:.5rem;box-shadow:0 1px 2px rgba(0,0,0,.08);transition:background .15s}
+  .btn-primary:hover{background:#a8000f}
+  /* --- 按鈕階層 2：Secondary（淺色邊框）— 次要操作 --- */
+  .btn-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.375rem;white-space:nowrap;background:#fff;color:#44403c;font-size:.8125rem;font-weight:500;padding:.375rem .875rem;border:1px solid #d6d3d1;border-radius:.5rem;transition:.15s}
+  .btn-secondary:hover{background:#fafaf9;border-color:#a8a29e}
+  /* --- 按鈕階層 2：Ghost（無底色無框）— 輕量操作 --- */
+  .btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.375rem;white-space:nowrap;color:#57534e;font-size:.8125rem;font-weight:500;padding:.375rem .75rem;border-radius:.5rem;transition:.15s}
+  .btn-ghost:hover{background:#f5f5f4;color:#1c1917}
+  /* --- 快捷引導標籤（Prompt Chips）— 輕量邊框 --- */
+  .chip{display:inline-flex;align-items:center;text-align:left;background:#fff;color:#57534e;font-size:.75rem;padding:.3rem .7rem;border:1px solid #e7e5e4;border-radius:9999px;line-height:1.3;transition:.15s}
+  .chip:hover{border-color:#ff9aa3;color:#a8000f;background:#fff1f2}
+  /* --- 按鈕階層 3：Text Link（純文字箭頭連結）— 查看對話 ↗ / 前往檢視 ↗ --- */
+  .lnk{color:#cd0013;background:none;border:0;padding:0;cursor:pointer;white-space:nowrap}
+  .lnk:hover{text-decoration:underline;color:#a8000f}
+  .btn-primary:disabled,.btn-secondary:disabled,.btn-ghost:disabled,.lnk:disabled,.chip:disabled{opacity:.4;cursor:not-allowed}
+</style>
+</head>
+<body class="text-slate-700 antialiased" x-data="app()" x-cloak>
+
+<!-- ===== 區塊 1-C: 永豐銀行 Logo 向量定義（依提供之 logo 圖檔描摹） ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="sp-mark" viewBox="0 0 269 270">
+      <circle cx="134.5" cy="135" r="134.5" fill="#cd0013"/>
+      <g fill="#fff">
+        <rect x="150" y="49" width="33" height="33"/>
+        <rect x="37" y="82" width="113" height="30"/>
+        <rect x="119" y="112" width="30" height="90"/>
+        <rect x="180" y="112" width="67" height="30"/>
+        <rect x="30" y="142" width="59" height="30"/>
+        <rect x="180" y="142" width="29" height="60"/>
+        <rect x="60" y="172" width="29" height="30"/>
+      </g>
+    </symbol>
+    <symbol id="sp-lockup" viewBox="0 0 1242 390">
+      <use href="#sp-mark" x="15" y="19" width="269" height="270"/>
+      <text x="375" y="226" font-family="'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif" font-weight="700" font-size="205" textLength="839" lengthAdjust="spacing" fill="#000">永豐銀行</text>
+      <text x="375" y="371" font-family="Inter,'Noto Sans TC',Arial,sans-serif" font-weight="700" font-size="136" textLength="839" lengthAdjust="spacingAndGlyphs" fill="#000">Bank SinoPac</text>
+    </symbol>
+    <filter id="softShadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#cd0013" flood-opacity=".28"/></filter>
+  </defs>
+</svg>
+
+<!-- ===== 區塊 1-D: 頂部導覽列（登入後顯示） ===== -->
+<header x-show="view!=='login'" class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-4 min-w-0">
+      <svg viewBox="0 0 1242 390" style="aspect-ratio:1242/390" class="h-9 shrink-0" role="img" aria-label="永豐銀行 Bank SinoPac"><use href="#sp-lockup"/></svg>
+      <div class="hidden sm:block w-px h-8 bg-slate-200"></div>
+      <div class="min-w-0 hidden sm:block">
+        <div class="text-sm font-semibold text-slate-900 truncate" x-text="me?deptName()+' · '+me.team:''"></div>
+        <div class="text-xs text-slate-500 truncate">2025 年度主管考核 · 初評階段</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button x-show="view==='detail'||view==='performance'" @click="back()" class="btn-ghost">← 員工清單</button>
+      <select x-show="view==='detail'||view==='performance'" x-model="selId" @change="switchEmployee()" class="rounded-lg border border-slate-300 bg-white text-sm px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:outline-none max-w-[140px] sm:max-w-none">
+        <template x-for="e in team" :key="e.id"><option :value="e.id" x-text="e.name+'（'+statusOf(e)+'）'"></option></template>
+      </select>
+      <div class="hidden md:block text-right leading-tight pl-2">
+        <div class="text-sm font-medium text-slate-900" x-text="me?me.tag+'・'+me.name:''"></div>
+        <div class="text-[11px] text-slate-400" x-text="me?me.team+' '+me.title:''"></div>
+      </div>
+      <button @click="logout()" class="btn-ghost">登出</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<!-- ===== 區塊 2: 個別員工評核頁 ===== -->
+<!-- ============================================================ -->
+<template x-if="view==='performance'">
+<main class="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <div class="text-xs font-medium text-brand-700">階段一｜主管自主觀察</div>
+      <h1 class="mt-1 text-xl font-semibold text-slate-900" x-text="emp.name+'・今年表現評價'"></h1>
+      <p class="mt-1 text-sm text-slate-500" x-text="emp.company+' '+emp.unit+' · '+emp.jobTitle+' · 職等 '+emp.level"></p>
+    </div>
+    <span class="text-xs px-2 py-1 rounded-full border" :class="statusClass(emp)" x-text="statusOf(emp)"></span>
+  </div>
+
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+    <h2 class="text-base font-semibold text-slate-900">年度目標與主管認定</h2>
+    <p class="mt-1 mb-4 text-xs text-slate-500">請依年初目標與您掌握的事實，獨立記錄各項達成率及今年觀察。</p>
+    <div class="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+      <template x-for="(g,i) in emp.goals" :key="i">
+        <div class="px-3 py-3">
+          <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_120px_120px] gap-2 items-center">
+            <div class="text-sm font-medium text-slate-800" x-text="(i+1)+'. '+g.t"></div>
+            <div class="text-xs text-slate-500">員工自評 <span x-text="g.self+'%'"></span></div>
+            <label class="text-xs text-slate-500">主管認定達成率
+              <div class="mt-1 flex items-center gap-1.5">
+                <input type="number" min="0" max="100" :value="s.form.goals[i].r" @change="manual('goal',i,event.target.value,event.target)" :disabled="locked()" placeholder="0–100" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 disabled:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                <span>%</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)] gap-4">
+      <label class="block text-sm font-medium">綜合達成率（主管認定）
+        <div class="mt-1.5 flex items-center gap-2">
+          <input type="number" min="0" max="100" step="0.1" :value="effRate()==='—'?'':effRate()" @change="manual('overall',null,event.target.value,event.target)" :disabled="locked()" placeholder="依各目標平均" class="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+          <span class="text-sm text-slate-500">%</span>
+        </div>
+        <span class="mt-1 block text-[11px] font-normal text-slate-400" x-text="goalAvg()==='—'?'尚未填寫目標達成率':'各目標平均 '+goalAvg()+'%'"></span>
+      </label>
+      <label class="block text-sm font-medium">今年表現摘要（主管觀察）
+        <textarea x-model="s.form.perf" :disabled="locked()" rows="5" placeholder="請記錄具體成果、挑戰、行為觀察與事例。" class="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm leading-relaxed focus:ring-2 focus:ring-brand-500 focus:outline-none disabled:bg-slate-50"></textarea>
+      </label>
+    </div>
+
+    <div x-show="locked()" class="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">本員考核已送交人資複審，目前為唯讀。</div>
+    <div class="mt-5 pt-4 border-t border-slate-100 flex flex-wrap justify-end gap-3">
+      <button @click="back()" class="btn-ghost">返回員工清單</button>
+      <button @click="saveDraft()" :disabled="locked()" class="btn-secondary">儲存草稿</button>
+      <button @click="finishPerf()" :disabled="locked()" class="btn-primary">完成自主評價，前往評分</button>
+    </div>
+  </section>
+  <p class="text-center text-xs text-slate-400 py-6">PoC 示範介面・所有資料均為虛構</p>
+</main>
+</template>
+
+<template x-if="view==='detail'">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+<div class="flex gap-6 items-start justify-center">
+
+  <!-- 左：工作區（2-A ~ 2-E） -->
+  <div class="w-full min-w-0 space-y-5 transition-all duration-300" :class="aiOpen?'max-w-[820px]':'max-w-[980px]'">
+
+    <!-- ===== 區塊 2-A: 員工檔案 ===== -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-800 text-white text-lg font-semibold grid place-items-center shrink-0" x-text="emp.name.slice(-2)"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-lg font-semibold text-slate-900" x-text="emp.name"></h2>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-100" x-text="'員編 '+emp.id"></span>
+          </div>
+          <p class="text-sm text-slate-500" x-text="emp.company+' '+emp.unit+' · '+emp.jobTitle+' · 職等 '+emp.level"></p>
+        </div>
+      </div>
+      <dl class="grid grid-cols-6 gap-x-4 gap-y-3 mt-4 text-sm">
+        <div class="col-span-2"><dt class="text-[11px] text-slate-400">年齡</dt><dd class="font-medium" x-text="emp.age+' 歲'"></dd></div>
+        <div class="col-span-2"><dt class="text-[11px] text-slate-400">集團年資</dt><dd class="font-medium" x-text="emp.groupYears+' 年'"></dd></div>
+        <div class="col-span-2"><dt class="text-[11px] text-slate-400">部門年資</dt><dd class="font-medium" x-text="emp.deptYears+' 年'"></dd></div>
+        <div class="col-span-6 sm:col-span-3"><dt class="text-[11px] text-slate-400">學經歷</dt><dd class="font-medium" x-text="emp.edu"></dd></div>
+        <div class="col-span-6 sm:col-span-3"><dt class="text-[11px] text-slate-400">前職經歷</dt><dd class="font-medium" x-text="emp.prev"></dd></div>
+      </dl>
+    </section>
+
+    <!-- ===== 區塊 2-B: 歷史資料頁籤（年度目標／歷史考績／360／輪調經歷） ===== -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div class="flex gap-1 px-4 pt-2.5 border-b border-slate-200 overflow-x-auto scroll-thin">
+        <template x-for="t in tabs" :key="t.k">
+          <button @click="tab=t.k" :class="tab===t.k?'border-brand-600 text-brand-700':'border-transparent text-slate-500 hover:text-slate-800'" class="px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap transition" x-text="t.l"></button>
+        </template>
+      </div>
+      <div class="p-5">
+        <!-- Tab A：年度目標與自評 -->
+        <div x-show="tab==='A'" class="space-y-3">
+          <div class="flex items-center justify-between rounded-xl bg-brand-50 border border-brand-100 px-4 py-3">
+            <div>
+              <div class="text-xs text-slate-500">員工自評綜合達成率</div>
+              <div class="text-[11px] text-slate-400">年初目標設定 · 年末員工自評</div>
+            </div>
+            <div class="text-2xl font-bold text-brand-700" x-text="selfRate(emp).toFixed(1)+'%'"></div>
+          </div>
+          <div class="rounded-xl border border-slate-200 divide-y divide-slate-100">
+            <template x-for="(g,i) in emp.goals" :key="i">
+              <div class="px-3 py-2.5">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="text-sm font-medium text-slate-900" x-text="(i+1)+'. '+g.t"></div>
+                  <span class="text-sm font-semibold text-slate-900" x-text="g.self+'%'"></span>
+                </div>
+                <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full bg-brand-500 transition-all duration-500" :style="'width:'+g.self+'%'"></div></div>
+              </div>
+            </template>
+          </div>
+          <p class="text-sm text-slate-600 pl-3 border-l-2 border-brand-200 leading-relaxed" x-text="'員工自評說明：'+emp.selfNote"></p>
+        </div>
+        <!-- Tab B：歷史考績 -->
+        <div x-show="tab==='B'" class="space-y-3">
+          <template x-for="h in emp.history" :key="h.year">
+            <div class="rounded-xl border border-slate-200 p-4 hover:border-brand-200 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-semibold text-slate-900" x-text="h.year+' 年度'"></span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold" :class="gradeColor(h.grade)" x-text="h.grade"></span>
+              </div>
+              <div class="mt-2.5 text-[11px] font-medium text-slate-400">考績評語（主管）</div>
+              <p class="text-sm mt-0.5 leading-relaxed" x-text="h.comment"></p>
+              <div class="mt-2.5 text-[11px] font-medium text-slate-400">自評績效</div>
+              <p class="text-xs text-slate-600 mt-0.5 pl-3 border-l-2 border-brand-200 leading-relaxed whitespace-pre-line" x-text="h.self"></p>
+            </div>
+          </template>
+        </div>
+        <!-- Tab C：360 評鑑 -->
+        <div x-show="tab==='C'" class="space-y-4">
+          <div class="text-xs text-slate-400">2025 年度 · 分數範圍 0–10</div>
+          <template x-for="r in rows360()" :key="r.l">
+            <div>
+              <div class="flex justify-between text-sm mb-1"><span x-text="r.l"></span><span class="font-semibold text-slate-900" x-text="r.v.toFixed(1)"></span></div>
+              <div class="h-2.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full transition-all duration-500" :class="r.c" :style="'width:'+r.v*10+'%'"></div></div>
+            </div>
+          </template>
+          <div class="rounded-xl px-4 py-3 flex items-center justify-between" :class="gapOf(emp)>=0.5?'bg-amber-50 border border-amber-200':'bg-emerald-50 border border-emerald-200'">
+            <div>
+              <div class="text-xs text-slate-500">自評與他評差異（｜他評平均 − 個人自評｜）</div>
+              <div class="text-xs mt-0.5" x-text="gapOf(emp)>=0.5?'落差較明顯，面談時可以多聊聊':'認知大致一致'"></div>
+            </div>
+            <div class="text-2xl font-bold" :class="gapOf(emp)>=0.5?'text-amber-600':'text-emerald-600'" x-text="gapOf(emp).toFixed(1)"></div>
+          </div>
+        </div>
+        <!-- Tab D：輪調經歷 -->
+        <div x-show="tab==='D'" class="overflow-x-auto scroll-thin">
+          <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-slate-400 text-left border-b border-slate-200">
+              <th class="py-2 pr-4 font-medium">日期</th><th class="py-2 pr-4 font-medium">異動原因</th><th class="py-2 pr-4 font-medium">公司</th><th class="py-2 pr-4 font-medium">部門</th><th class="py-2 pr-4 font-medium">職等</th><th class="py-2 pr-4 font-medium">職稱</th><th class="py-2 font-medium">工作性質</th>
+            </tr></thead>
+            <tbody>
+              <template x-for="t in emp.rotation" :key="t.date">
+                <tr class="border-b border-slate-100">
+                  <td class="py-2 pr-4 text-slate-500" x-text="t.date"></td>
+                  <td class="py-2 pr-4"><span class="text-[11px] px-2 py-0.5 rounded-full" :class="t.reason==='升等'?'bg-emerald-50 text-emerald-700':t.reason==='到職'||t.reason==='初任'?'bg-brand-50 text-brand-700':'bg-slate-100 text-slate-600'" x-text="t.reason"></span></td>
+                  <td class="py-2 pr-4" x-text="t.company"></td>
+                  <td class="py-2 pr-4" x-text="t.dept"></td>
+                  <td class="py-2 pr-4" x-text="t.level"></td>
+                  <td class="py-2 pr-4" x-text="t.title"></td>
+                  <td class="py-2" x-text="t.nature"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 區塊 2-D: 步驟 ② 主管考核評分 ===== -->
+    <section id="step2" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 scroll-mt-24">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="text-xs font-medium text-brand-700">階段二｜評分與協作檢核</div>
+          <h2 class="mt-1 text-base font-semibold text-slate-900">主管考核評分 <span class="text-xs font-normal text-slate-400">Manager Assessment</span></h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs px-2 py-1 rounded-full border" :class="statusClass(emp)" x-text="statusOf(emp)"></span>
+        </div>
+      </div>
+      <div x-show="locked()" class="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span>本員考核已送交人資複審，目前為唯讀。</span>
+          <span class="flex flex-wrap items-center gap-2">
+            <button @click="unlock()" class="btn-ghost">撤回並重新編輯</button>
+            <button @click="nextPending()" class="btn-secondary">評核下一位 →</button>
+          </span>
+        </div>
+      </div>
+      <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold text-slate-800">主管自主評價紀錄</h3>
+          <button @click="view='performance';aiOpen=false" class="lnk text-xs">修改自主評價 ↗</button>
+        </div>
+        <p class="mt-2 text-sm leading-relaxed text-slate-700 whitespace-pre-line" x-text="s.form.perf||'尚未填寫今年表現摘要。'"></p>
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <template x-for="(g,i) in emp.goals" :key="i">
+            <div class="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs">
+              <div class="font-medium text-slate-700" x-text="g.k+' · '+g.t"></div>
+              <div class="mt-1 text-slate-500">主管認定 <span class="font-semibold text-slate-700" x-text="s.form.goals[i].r===''?'尚未填寫':s.form.goals[i].r+'%'"></span></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div id="fld-grade" class="hl rounded-xl border border-slate-200 px-3.5 py-2.5" :class="hlc('grade')">
+            <div class="text-sm font-medium">最終績效等第</div>
+            <div class="mt-1.5 flex items-center gap-2">
+              <span class="inline-flex px-2.5 py-1 rounded-full text-sm font-semibold" :class="s.form.grade?gradeColor(s.form.grade):'bg-slate-100 text-slate-500'" x-text="s.form.grade||'待評分'"></span>
+              <span class="text-xs text-slate-500">依微調後分數判定</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-slate-50 px-3.5 py-2.5 flex flex-col justify-center">
+            <div class="text-xs text-slate-500">最終分數（基礎分數 + 主管微調分）</div>
+            <div class="text-3xl font-bold text-brand-700 leading-tight" x-text="finalScore()"></div>
+            <div class="text-[11px] text-slate-500">基礎分數 <span x-text="avg()"></span> · 微調 <span x-text="adjustmentText()"></span></div>
+            <div class="text-[11px] text-slate-400">90↑特優、80↑優、70↑甲上、60↑甲，未滿60為乙</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium">細分指標（0–100）</div>
+           
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <template x-for="(k,i) in s.form.kpis" :key="i">
+              <div :id="'fld-kpi-'+i" class="hl rounded-xl border border-slate-200 px-3.5 py-2.5 scroll-mt-24" :class="hlc('kpi-'+i)">
+                <div class="flex items-center gap-3">
+                  <div class="flex-1 min-w-0 text-sm font-medium text-slate-800" x-text="k.n"></div>
+                  <input type="number" min="0" max="100" :value="k.s" @change="manual('kpi',i,event.target.value,event.target)" :disabled="dis()" placeholder="分數" class="w-20 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-right disabled:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+                <template x-if="lastLog('kpi',i)">
+                  <div class="mt-1.5 text-[11px] flex items-center justify-between gap-2" :class="lastLog('kpi',i).src==='ai'?'text-brand-600':'text-slate-500'">
+                    <span x-text="(lastLog('kpi',i).src==='ai'?'來自 AI 對話：':'主管手動調整：')+fmt(lastLog('kpi',i).from)+' → '+fmt(lastLog('kpi',i).to)"></span>
+                    <button x-show="lastLog('kpi',i).src==='ai'" @click="jumpMsg(lastLog('kpi',i).msgId)" class="lnk">查看對話 ↗</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-900">主管微調分</h3>
+              <p class="mt-1 text-xs text-slate-500">HR 固定指標計算出的基礎分數不變；本區另行加減，最終分數 = 基礎分數 + 微調分。</p>
+            </div>
+            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">範圍 −10 至 +10</span>
+          </div>
+          <div class="mt-3 flex items-center gap-3">
+            <input aria-label="主管微調分" type="number" min="-10" max="10" step="0.5" x-model.number="s.form.adjustment" @input="updateAdjustment()" @change="normalizeAdjustment($event.target)" :disabled="dis()" class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-right text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none disabled:bg-slate-50">
+            <span class="text-sm text-slate-500">分</span>
+            <span class="text-xs text-slate-400">輸入負值扣分，正值加分；0 分不需填理由。</span>
+          </div>
+          <div x-show="Number(s.form.adjustment)!==0" class="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+            <fieldset>
+              <legend class="text-xs font-semibold text-slate-800">微調原因標籤（至少選一項）</legend>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <template x-for="tag in adjustmentOptions" :key="tag">
+                  <button type="button" @click="toggleAdjustmentTag(tag)" :aria-pressed="s.form.adjustmentTags.includes(tag)" :disabled="dis()" class="rounded-full border px-2.5 py-1 text-xs transition" :class="s.form.adjustmentTags.includes(tag)?'border-brand-400 bg-brand-50 text-brand-800':'border-slate-200 bg-white text-slate-600' " x-text="tag"></button>
+                </template>
+              </div>
+            </fieldset>
+            <label class="block text-xs font-semibold text-slate-800">具體事實理由（必填）
+              <textarea x-model="s.form.adjustmentReason" :disabled="dis()" rows="3" placeholder="請說明事件、本人具體行動與可驗證結果。" class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-relaxed focus:ring-2 focus:ring-brand-500 focus:outline-none disabled:bg-slate-50"></textarea>
+              <span class="mt-1 flex justify-between font-normal">
+                <span class="text-slate-400">請填寫具體事實</span>
+                <span class="text-slate-400">目前最終分數 <span x-text="finalScore()"></span></span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section id="fld-comment" class="rounded-xl border border-slate-200 bg-white p-4 scroll-mt-24">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-900">主管考核評語</h3>
+              <p class="mt-1 text-xs text-slate-500">可直接撰寫；如需協助，可從 AI 教練帶入建議後再編輯。</p>
+            </div>
+          </div>
+          <label class="mt-3 block text-xs font-medium text-slate-700">評語內容｜<span x-text="prefixText()"></span>
+            <textarea x-model="s.form.body" :disabled="locked()" rows="6" placeholder="請撰寫具體、客觀的考核評語；也可從 AI 教練帶入建議後再編輯。" class="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm leading-relaxed focus:ring-2 focus:ring-brand-500 focus:outline-none disabled:bg-slate-50"></textarea>
+          </label>
+        </section>
+
+        </div>
+
+      <!-- ===== 區塊 2-E-1：逐次評分調整紀錄（V2 Audit Trail） ===== -->
+      <div class="mt-5 pt-4 border-t border-slate-100">
+        <button type="button" @click="auditLogOpen=!auditLogOpen" :aria-expanded="auditLogOpen" class="w-full flex items-center justify-between text-left group">
+          <span class="text-sm font-semibold text-slate-900">評分調整紀錄 <span class="text-xs font-normal text-slate-400">Audit Trail</span>
+            <span class="ml-1 text-xs font-normal px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="s.fieldLog.length+' 筆'"></span></span>
+          <span class="text-xs text-slate-400 group-hover:text-slate-700" x-text="auditLogOpen?'收合 ▴':'展開 ▾'"></span>
+        </button>
+        <div x-show="auditLogOpen" x-transition class="mt-3">
+          <div x-show="!s.fieldLog.length" class="text-xs text-slate-400 py-2">尚無調整紀錄。初次填寫及 5 分鐘內的修正會自動記錄；其他調整需填寫原因。</div>
+          <ul class="space-y-2">
+            <template x-for="l in s.fieldLog" :key="l.id">
+              <li class="rounded-lg border border-slate-200 px-3 py-2 text-xs space-y-1">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span class="text-slate-400" x-text="l.time"></span>
+                  <span class="px-1.5 py-0.5 rounded-md font-medium" :class="l.src==='ai'?'bg-brand-50 text-brand-700':'bg-slate-100 text-slate-600'" x-text="l.src==='ai'?'AI 對話套用':'主管手動'"></span>
+                  <span class="font-medium text-slate-800" x-text="l.label+'：'+fmt(l.from,l.kind)+' → '+fmt(l.to,l.kind)"></span>
+                  <button x-show="l.src==='ai'&&l.msgId" @click="jumpMsg(l.msgId)" class="lnk ml-auto">查看來源對話 ↗</button>
+                </div>
+                <div class="text-slate-500">原因：<span class="text-slate-700" x-text="l.reason||'未填寫' "></span></div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===== 區塊 2-E: 評分調整紀錄（可收合，預設收合） ===== -->
+      <div class="mt-5 pt-4 border-t border-slate-100">
+        <button type="button" @click="logOpen=!logOpen" :aria-expanded="logOpen" class="w-full flex items-center justify-between text-left group">
+          <span class="text-sm font-semibold text-slate-900">草稿儲存紀錄 <span class="text-xs font-normal text-slate-400">Draft History</span>
+            <span class="ml-1 text-xs font-normal px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="s.log.length+' 筆'"></span></span>
+          <span class="text-xs text-slate-400 group-hover:text-slate-700" x-text="logOpen?'收合 ▴':'展開 ▾'"></span>
+        </button>
+        <div x-show="logOpen" x-transition class="mt-3">
+          <div x-show="!s.log.length" class="text-xs text-slate-400 py-2">首次儲存草稿免填理由；第二次起再次儲存時需填寫理由，並記錄有變更的項目。</div>
+          <ul class="space-y-2">
+            <template x-for="l in s.log" :key="l.id">
+              <li class="rounded-lg border border-slate-200 px-3 py-2 text-xs space-y-2">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span class="text-slate-400" x-text="l.time"></span>
+                  <span class="font-semibold text-slate-800" x-text="l.initial?'首次儲存草稿':'草稿修改紀錄'"></span>
+                </div>
+                <ul x-show="l.changes.length" class="space-y-1 pl-3 border-l-2 border-slate-200">
+                  <template x-for="(c,i) in l.changes" :key="i">
+                    <li class="text-slate-600"><span class="font-medium text-slate-800" x-text="c.label"></span>：<span x-text="draftChangeValue(c.from,c.kind)"></span> → <span class="font-medium text-brand-700" x-text="draftChangeValue(c.to,c.kind)"></span></li>
+                  </template>
+                </ul>
+                <div x-show="!l.initial&&!l.changes.length" class="text-slate-500">本次儲存沒有欄位變更。</div>
+                <div x-show="l.reason" class="text-slate-500">理由：<span class="text-slate-700" x-text="l.reason"></span></div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 區塊 2-D 底部操作列 -->
+      <div class="mt-5 pt-4 border-t border-slate-100 flex justify-end items-center gap-3">
+        <button @click="reset()" :disabled="locked()" class="btn-ghost">重設</button>
+        <button @click="saveDraft()" :disabled="locked()" class="btn-secondary">儲存草稿</button>
+        <button @click="submit()" :disabled="locked()" class="btn-primary">送出考核</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== 區塊 2-F: AI 智慧教練側欄與浮動按鈕 ===== -->
+  <!-- 手機版背景遮罩 -->
+  <div x-show="aiOpen" x-transition.opacity class="fixed inset-0 z-30 bg-slate-900/30 lg:hidden" @click="aiOpen=false"></div>
+
+  <!-- 展開狀態：桌機為右側固定面板，手機為底部抽屜 -->
+  <aside x-show="aiOpen"
+         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-6 lg:translate-y-0 lg:translate-x-4" x-transition:enter-end="opacity-100 translate-y-0 lg:translate-x-0"
+         x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0 lg:translate-x-0" x-transition:leave-end="opacity-0 translate-y-6 lg:translate-y-0 lg:translate-x-4"
+         class="fixed inset-x-0 bottom-0 z-40 h-[75vh] flex flex-col bg-white border border-slate-200 shadow-2xl rounded-t-2xl overflow-hidden
+                lg:inset-x-auto lg:bottom-auto lg:top-20 lg:sticky lg:z-10 lg:w-[380px] lg:h-[calc(100vh-6rem)] lg:shrink-0 lg:rounded-2xl lg:shadow-sm">
+    <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-full bg-brand-50 text-brand-600 grid place-items-center"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2l1.8 4.6L16.5 8l-4.7 1.4L10 14l-1.8-4.6L3.5 8l4.7-1.4z"/></svg></span>
+        <div>
+          <div class="text-sm font-semibold text-slate-900">AI 智慧教練</div>
+          <div class="text-[11px] text-slate-400">幕僚陪練夥伴・定調權在您</div>
+        </div>
+      </div>
+      <button @click="aiOpen=false" class="btn-ghost" title="收合 AI 教練">收合 ›</button>
+    </div>
+    <div x-show="s.stance||s.skipped" class="px-4 py-1.5 text-[11px] bg-slate-50 border-b border-slate-100 text-slate-500 shrink-0" x-text="s.skipped?'討論記錄：主管直接定調':(s.stance?'目前定調：'+emp.focus[s.stance].label:'')"></div>
+
+    <!-- 對話區 -->
+    <div class="flex-1 min-h-0 overflow-y-auto scroll-thin p-3 space-y-3.5" x-ref="chat">
+      <template x-for="m in s.msgs" :key="m.id">
+        <div :id="'msg-'+selId+'-'+m.id" class="flex flex-col scroll-mt-4" :class="m.r==='u'?'items-end':'items-start'">
+          <div class="hl max-w-[92%] text-[13px] leading-relaxed rounded-2xl px-3 py-2 whitespace-pre-line"
+               :class="(m.r==='u'?'bg-brand-600 text-white rounded-br-sm':'bg-slate-100 text-slate-700 rounded-bl-sm')+(hl==='m'+m.id?' ring-2 ring-amber-400':'')"
+               x-text="m.t"></div>
+
+          <!-- 立場選擇題（開場訊息） -->
+          <div x-show="(m.stances||[]).length" class="mt-2 w-full space-y-1.5">
+            <div class="text-[11px] text-slate-400">請選擇初步定調（一鍵即可，隨時可改選）</div>
+            <template x-for="sd in (m.stances||[])" :key="sd.k">
+              <button type="button" @click="chooseStance(m,sd.k)" class="w-full text-left rounded-xl border px-3 py-2 text-xs transition"
+                      :class="m.chosen===sd.k?'border-brand-400 bg-brand-50':'border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50/40'">
+                <div class="mb-0.5 text-[10px] font-semibold tracking-wide" :class="sd.k==='A'?'text-emerald-700':'text-amber-700'" x-text="sd.k==='A'?'立場 A｜表現亮眼／優勢':'立場 B｜待改進／風險'"></div>
+                <div class="font-medium" :class="m.chosen===sd.k?'text-brand-800':'text-slate-800'" x-text="sd.label"></div>
+                <div class="text-slate-500 mt-0.5 leading-snug" x-text="sd.hint"></div>
+                <div class="mt-1.5 border-t border-slate-100 pt-1.5 leading-snug text-slate-600" x-text="emp.focus[sd.k].note"></div>
+              </button>
+            </template>
+          </div>
+
+          <!-- AI 建議動作 -->
+          <div x-show="(m.actions||[]).length" class="mt-1.5 w-full space-y-1.5">
+            <template x-for="(a,ai) in (m.actions||[])" :key="ai">
+              <div x-show="a.kind!=='comment'" class="rounded-xl border px-2.5 py-2 text-xs flex flex-wrap items-center gap-x-2 gap-y-1.5" :class="isApplied(m,ai)?'border-emerald-200 bg-emerald-50':'border-slate-200 bg-white'">
+                <div class="flex-1 min-w-[150px]">
+                  <div class="font-medium text-slate-800" x-text="a.label+' → '+showVal(a)"></div>
+                  <div class="text-slate-500 mt-0.5 leading-snug line-clamp-3" x-show="a.why" :title="a.why" x-text="a.why"></div>
+                </div>
+                <button x-show="!isApplied(m,ai)" @click="apply(m,ai)" :disabled="locked()" class="btn-secondary">採納</button>
+                <button x-show="isApplied(m,ai)" @click="jumpField(a.kind,a.idx)" class="lnk">已套用 ✓ 前往檢視 ↗</button>
+              </div>
+            </template>
+            <button x-show="pendingCount(m)>1" @click="applyAll(m)" :disabled="locked()" class="btn-ghost" x-text="'全部採納（'+pendingCount(m)+' 項）'"></button>
+          </div>
+          <div x-show="m.commentDraft" class="mt-2 w-full rounded-xl border border-brand-100 bg-brand-50/50 p-2.5">
+            <div class="text-[11px] font-semibold text-brand-800">AI 評語建議</div>
+            <p class="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-700" x-text="m.commentText"></p>
+            <button type="button" @click="applyCommentSuggestion(m.commentText)" :disabled="locked()||!m.commentText" class="mt-2 btn-secondary !px-2 !py-1 !text-[11px]">帶入 AI 建議</button>
+          </div>
+        </div>
+      </template>
+      <div x-show="typing" class="text-xs text-slate-400">AI 陪練思考中<span class="dot"></span></div>
+    </div>
+
+    <!-- 指導型 Prompt Chips -->
+    <div class="px-3 pt-2 shrink-0">
+      <button @click="coachToolsOpen=!coachToolsOpen" class="text-[11px] text-slate-500 hover:text-slate-800" x-text="coachToolsOpen?'收合指導 AI 工具 ▴':'指導 AI 工具 ▾'"></button>
+      <div x-show="coachToolsOpen" class="mt-1 max-h-20 overflow-y-auto flex flex-wrap gap-1.5">
+        <template x-for="c in chips" :key="c.k"><button @click="coach(c.k)" class="chip" x-text="c.l"></button></template>
+      </div>
+    </div>
+    <!-- 輸入列 -->
+    <div class="p-3 flex gap-2 shrink-0">
+      <input x-model="draft" @keydown.enter="send()" placeholder="輸入具體事例或指導 AI（例如：考量外部市場逆風...）" class="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+      <button @click="send()" class="btn-secondary">送出</button>
+    </div>
+  </aside>
+
+  <!-- 收合狀態：桌機為右側窄條，手機為右下浮動按鈕（次要樣式） -->
+  <button x-show="!aiOpen" @click="aiOpen=true" title="展開 AI 教練"
+          x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-90" x-transition:enter-end="opacity-100 scale-100"
+          class="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-white text-brand-700 border border-brand-300 shadow-lg px-4 py-3 text-sm font-medium hover:bg-brand-50 transition
+                 lg:sticky lg:bottom-auto lg:right-auto lg:top-20 lg:z-10 lg:shrink-0 lg:w-12 lg:h-44 lg:flex-col lg:justify-center lg:gap-3 lg:rounded-2xl lg:px-0 lg:py-0 lg:shadow-sm">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2l1.8 4.6L16.5 8l-4.7 1.4L10 14l-1.8-4.6L3.5 8l4.7-1.4z"/></svg>
+    <span class="tracking-widest lg:[writing-mode:vertical-rl]">AI 教練</span>
+    <span x-show="pendingTotal()>0" class="min-w-[20px] h-5 px-1 rounded-full bg-brand-600 text-white text-[11px] font-bold grid place-items-center" x-text="pendingTotal()"></span>
+  </button>
+</div>
+<p class="text-center text-xs text-slate-400 py-6">PoC 示範介面・所有資料均為虛構，AI 回覆為預設腳本模擬</p>
+</main>
+</template>
+
+<!-- ============================================================ -->
+<!-- ===== 區塊 3: 登入頁與員工清單 ===== -->
+<!-- ============================================================ -->
+
+<!-- ===== 區塊 3-A: 登入頁 ===== -->
+<section x-show="view==='login'" class="min-h-screen grid md:grid-cols-2">
+  <div class="relative overflow-hidden bg-gradient-to-br from-white via-[#fff7f7] to-brand-100 min-h-[380px] md:min-h-screen">
+    <svg class="absolute inset-0 w-full h-full" aria-hidden="true">
+      <defs><pattern id="modGrid" width="33" height="33" patternUnits="userSpaceOnUse"><path d="M33 0H0V33" fill="none" stroke="#cd0013" stroke-opacity=".08"/></pattern></defs>
+      <rect width="100%" height="100%" fill="url(#modGrid)"/>
+    </svg>
+    <svg viewBox="0 0 700 700" class="floaty absolute -right-48 md:-right-72 top-1/2 -translate-y-1/2 w-[470px] md:w-[680px] max-w-none" aria-hidden="true">
+      <circle cx="350" cy="350" r="338" fill="none" stroke="#cd0013" stroke-opacity=".13"/>
+      <circle cx="350" cy="350" r="300" fill="none" stroke="#cd0013" stroke-opacity=".2" stroke-dasharray="2 8"/>
+      <g fill="#cd0013">
+        <rect x="46" y="116" width="33" height="33" fill-opacity=".12"/><rect x="79" y="149" width="33" height="33" fill-opacity=".07"/>
+        <rect x="568" y="578" width="33" height="33" fill-opacity=".12"/><rect x="601" y="545" width="33" height="33" fill-opacity=".07"/>
+        <rect x="604" y="82" width="33" height="33" fill-opacity=".1"/>
+      </g>
+      <use href="#sp-mark" x="130" y="130" width="440" height="442" filter="url(#softShadow)"/>
+    </svg>
+    <div class="relative z-10 p-8 md:p-14 flex flex-col justify-between min-h-[380px] md:min-h-screen">
+      <svg viewBox="0 0 1242 390" style="aspect-ratio:1242/390" class="h-12 md:h-14 w-auto" role="img" aria-label="永豐銀行 Bank SinoPac"><use href="#sp-lockup"/></svg>
+      <div class="max-w-sm py-10 md:py-0 [text-shadow:0_0_24px_#fff,0_0_8px_#fff]">
+        <div class="text-xs tracking-[0.3em] text-brand-700 font-medium">MANAGER ASSESSMENT · AI CO-PILOT</div>
+        <h1 class="mt-3 text-4xl md:text-5xl font-bold leading-tight text-slate-900">主管考核系統</h1>
+        <p class="mt-4 text-slate-600 leading-relaxed text-sm md:text-base">整合員工多面向檔案，由 AI 幕僚陪練協助主管思辨與校準；評定的主導權，永遠在您手上。</p>
+      </div>
+      <div class="text-xs text-slate-400 hidden md:block">PoC 示範介面・所有資料均為虛構</div>
+    </div>
+  </div>
+  <div class="flex items-center justify-center p-6 md:p-12 bg-white">
+    <div class="w-full max-w-sm">
+      <h2 class="text-2xl font-semibold text-slate-900">主管登入</h2>
+      <p class="text-sm text-slate-500 mt-1">登入後僅能對自己的部屬評分；等第分布會彙整同單位兩位主管的實際送出結果。</p>
+      <form @submit.prevent="doLogin()" class="mt-8 space-y-4">
+        <label class="block text-sm font-medium">主管員編
+          <input x-model="login.id" autocomplete="username" placeholder="例：M2001" class="mt-1.5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+        </label>
+        <label class="block text-sm font-medium">密碼
+          <input type="password" x-model="login.pw" autocomplete="current-password" placeholder="測試密碼：demo" class="mt-1.5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+        </label>
+        <p x-show="login.err" class="text-sm text-brand-600" x-text="login.err"></p>
+        <button type="submit" class="btn-primary w-full">登入</button>
+      </form>
+      <div class="mt-8">
+        <div class="text-xs text-slate-400 mb-2">測試帳號（點選自動帶入）</div>
+        <div class="space-y-2">
+          <template x-for="m in managers" :key="m.id">
+            <button type="button" @click="quickLogin(m)" class="w-full text-left rounded-xl border border-slate-200 hover:border-brand-300 hover:bg-brand-50/50 px-4 py-3 transition">
+              <div class="text-sm font-medium text-slate-900" x-text="m.tag+'｜'+m.name+' '+m.title+'・'+unitName+' '+m.team"></div>
+              <div class="text-xs text-slate-400 mt-0.5" x-text="'員編 '+m.id+' · 密碼 '+m.pw"></div>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<template x-if="view==='list'">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-slate-900" x-text="deptName()+' · '+me.team"></h1>
+      <p class="text-sm text-slate-500 mt-1">您負責評核自己團隊的部屬。請先瀏覽基本資料，再點選進入個別評核。</p>
+    </div>
+    <div class="inline-flex rounded-xl bg-slate-100 p-1 text-sm">
+      <button @click="listTab='roster'" class="px-4 py-1.5 rounded-lg transition" :class="listTab==='roster'?'bg-white shadow-sm text-brand-700 font-medium':'text-slate-500'">員工清單</button>
+      <button @click="listTab='calib'" class="px-4 py-1.5 rounded-lg transition flex items-center gap-1.5" :class="listTab==='calib'?'bg-white shadow-sm text-brand-700 font-medium':'text-slate-500'">
+        等第分布校準 <span x-show="calibAlertCount()>0" class="w-2 h-2 rounded-full bg-brand-600"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== 區塊 3-B: 員工清單（僅基本資料，不含考績內容） ===== -->
+  <div x-show="listTab==='roster'" class="space-y-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <template x-for="c in statCards()" :key="c.l">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div class="text-xs text-slate-400" x-text="c.l"></div>
+          <div class="text-2xl font-bold mt-1" :class="c.c" x-text="c.v"></div>
+        </div>
+      </template>
+    </div>
+    <div class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+      <div class="flex flex-wrap gap-2">
+        <template x-for="f in filters" :key="f">
+          <button @click="filter=f" class="text-xs px-3 py-1.5 rounded-full border transition"
+            :class="filter===f?'bg-brand-50 text-brand-700 border-brand-300 font-medium':'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'"
+            x-text="f+'（'+countBy(f)+'）'"></button>
+        </template>
+      </div>
+      <input x-model="q" placeholder="搜尋姓名或員編" class="rounded-lg border border-slate-300 px-3 py-2 text-sm w-full sm:w-60 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <template x-for="e in visible()" :key="e.id">
+        <button @click="open(e.id)" class="text-left bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:border-brand-300 hover:shadow-md transition group">
+          <div class="flex items-start gap-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-800 text-white font-semibold grid place-items-center shrink-0" x-text="e.name.slice(-2)"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2"><span class="font-semibold text-slate-900" x-text="e.name"></span><span class="text-[11px] text-slate-400" x-text="e.id+' · '+e.age+' 歲'"></span></div>
+              <div class="text-xs text-slate-500 truncate" x-text="e.company+' '+e.unit+' · '+e.jobTitle+' · 職等 '+e.level"></div>
+            </div>
+            <span class="text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap" :class="statusClass(e)" x-text="statusOf(e)"></span>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-3 text-xs">
+            <div><dt class="text-slate-400">集團年資</dt><dd class="font-medium text-slate-800" x-text="e.groupYears+' 年'"></dd></div>
+            <div><dt class="text-slate-400">部門年資</dt><dd class="font-medium text-slate-800" x-text="e.deptYears+' 年'"></dd></div>
+            <div class="col-span-2"><dt class="text-slate-400">學經歷</dt><dd class="font-medium text-slate-800" x-text="e.edu"></dd></div>
+            <div class="col-span-2"><dt class="text-slate-400">前職經歷</dt><dd class="text-slate-600 leading-relaxed" x-text="e.prev"></dd></div>
+          </dl>
+          <div class="mt-4 text-xs text-brand-600 text-right opacity-60 group-hover:opacity-100 transition" x-text="statusOf(e)==='待評核'?'開始評核 →':'繼續檢視 →'"></div>
+        </button>
+      </template>
+    </div>
+    <div x-show="!visible().length" class="text-center text-sm text-slate-400 py-10">沒有符合條件的員工</div>
+  </div>
+
+  <!-- ===== 區塊 3-C: 等第分布校準頁（雙主管真實資料） ===== -->
+  <div x-show="listTab==='calib'" class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-slate-900" x-text="deptName()+'・等第分布校準'"></h2>
+          <p class="mt-1 text-xs text-slate-500">含已儲存草稿與送出結果；編輯中即時更新。</p>
+        </div>
+      </div>
+      <div x-show="calibWarning()" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900" x-text="calibWarning()"></div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <template x-for="g in grades.slice().reverse()" :key="g">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+            <span class="h-2.5 w-2.5 rounded-sm" :class="gc[g]"></span><span x-text="g+' '+targetDistribution[g]+'%'"></span>
+          </span>
+        </template>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400">比例為示意值，提醒不代表配額或評等決策。</p>
+      <div class="mt-5 space-y-4">
+        <template x-for="r in mgrRows()" :key="r.key">
+          <div class="flex items-center gap-3">
+            <div class="w-32 shrink-0 text-xs truncate" :class="r.me?'font-semibold text-brand-700':(r.isAll?'font-semibold text-slate-900':'text-slate-600')" x-text="r.label"></div>
+            <div x-show="r.n>0" class="flex-1 flex flex-row-reverse h-8 rounded-md overflow-hidden bg-slate-100" :class="r.me?'ring-2 ring-brand-300':''">
+              <template x-for="g in grades" :key="g">
+                <div class="grid place-items-center text-[11px] text-white transition-all" :class="gc[g]" :style="'width:'+pct(r,g)+'%'">
+                  <span x-show="pct(r,g)>=12" x-text="Math.round(pct(r,g))+'%'"></span>
+                </div>
+              </template>
+            </div>
+            <div x-show="r.n===0" class="flex-1 h-8 rounded-md bg-slate-100 grid place-items-center text-[11px] text-slate-400">尚無等第</div>
+            <div class="w-32 shrink-0 text-right">
+              <div class="text-xs text-slate-500" x-text="r.n+' / '+r.size+' 人'"></div>
+              <div class="text-[10px] text-slate-400" x-text="r.draftN+' 份草稿 · '+r.liveN+' 位編輯中'"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="text-center text-xs text-slate-400 py-6">PoC 示範介面・所有資料均為虛構，AI 回覆為預設腳本模擬</p>
+</main>
+</template>
+
+<!-- ============================================================ -->
+<!-- ===== 區塊 4: 共用元件 ===== -->
+<!-- ============================================================ -->
+
+<!-- ===== 區塊 4-A：逐次評分調整原因 Modal（Audit Trail） ===== -->
+<div x-show="auditModal.open" x-transition.opacity class="fixed inset-0 z-[55] grid place-items-center bg-slate-900/50 p-4" @click.self="cancelReason()" @keydown.escape.window="cancelReason()">
+  <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+    <h3 class="text-base font-semibold text-slate-900">請說明此次評分調整原因</h3>
+    <p class="text-xs text-slate-500 mt-1">初次填寫及 5 分鐘內的修正會自動記錄；其他調整需填寫原因。</p>
+    <ul class="mt-4 space-y-1.5">
+      <template x-for="(it,i) in auditModal.items" :key="i">
+        <li class="rounded-lg bg-slate-50 px-3 py-2 text-sm"><span class="font-medium" x-text="labelOf(it.kind,it.idx)"></span>：<span class="text-slate-500" x-text="fmt(it.from,it.kind)"></span> → <span class="font-semibold text-brand-700" x-text="fmt(it.to,it.kind)"></span></li>
+      </template>
+    </ul>
+    <textarea x-model="auditModal.reason" rows="3" placeholder="請說明此次調整的具體事實與原因…" class="mt-4 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" :class="auditModal.err?'border-brand-500':'border-slate-300'"></textarea>
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      <template x-for="c in reasonChips" :key="c"><button type="button" @click="auditModal.reason=c" class="chip" x-text="c"></button></template>
+    </div>
+    <p x-show="auditModal.err" class="text-xs text-brand-600 mt-2">請輸入調整原因（至少 4 個字）。</p>
+    <div class="mt-5 flex justify-end gap-2">
+      <button @click="cancelReason()" class="btn-secondary">取消</button>
+      <button @click="confirmReason()" class="btn-primary">確認調整</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 區塊 4-A: 草稿修改理由 Modal ===== -->
+<div x-show="modal.open" x-transition.opacity class="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4" @click.self="cancelDraftSave()" @keydown.escape.window="cancelDraftSave()">
+  <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+    <h3 class="text-base font-semibold text-slate-900">再次儲存草稿，請填寫修改理由</h3>
+    <p class="text-xs text-slate-500 mt-1">以下列出與上次儲存內容不同的項目；修改理由必填，不限字數。</p>
+    <p x-show="!modal.changes.length" class="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">本次儲存沒有欄位變更。</p>
+    <ul class="mt-4 space-y-1.5">
+      <template x-for="(c,i) in modal.changes" :key="i">
+        <li class="rounded-lg bg-slate-50 px-3 py-2 text-sm"><span class="font-medium" x-text="c.label"></span>：<span class="text-slate-500" x-text="draftChangeValue(c.from,c.kind)"></span> → <span class="font-semibold text-brand-700" x-text="draftChangeValue(c.to,c.kind)"></span></li>
+      </template>
+    </ul>
+    <textarea x-model="modal.reason" rows="3" placeholder="請說明此次修改原因…" class="mt-4 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none" :class="modal.err?'border-brand-500':'border-slate-300'"></textarea>
+    <p x-show="modal.err" class="text-xs text-brand-600 mt-2">請輸入修改理由。</p>
+    <div class="mt-5 flex justify-end gap-2">
+      <button @click="cancelDraftSave()" class="btn-secondary">取消</button>
+      <button @click="confirmDraftSave()" class="btn-primary">確認儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 區塊 4-B: Toast 提示 ===== -->
+<div x-show="toast" x-transition class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2">
+  <span class="text-emerald-400">✔</span><span x-text="toastMsg"></span>
+</div>
+
+<script>
+// ============================================================
+// ===== 5. Alpine.js 資料層與核心狀態邏輯 =====
+// ============================================================
+
+// ===== 區塊 5-A: 常數、帳號與等第設定 =====
+const UNIT='法令遵循處';
+const GRADES=['特優','優','甲上','甲','乙'];
+const GSCORE={'特優':4,'優':3,'甲上':2,'甲':1,'乙':0};   // 僅用於比較兩位主管的評分傾向
+const GC={'特優':'bg-brand-800','優':'bg-brand-500','甲上':'bg-brand-300','甲':'bg-slate-400','乙':'bg-slate-600'};
+const TARGET_DISTRIBUTION={'特優':10,'優':20,'甲上':40,'甲':25,'乙':5};
+const TARGET_DEVIATION_THRESHOLD=10;
+const REASON_FREE_WINDOW=5*60*1000;
+// 指標與權重由人資統一設定（僅用於內部計算，不在介面顯示）
+const KPIS=[{n:'專業能力',w:30},{n:'工作成果',w:30},{n:'團隊協作',w:20},{n:'創新與學習',w:20}];
+const defKpi=()=>KPIS.map(k=>({n:k.n,w:k.w,s:''}));
+// 同單位（法令遵循處）兩位主管，各自管理不同部屬
+const MANAGERS=[
+  {id:'M2001',pw:'demo',tag:'主管 A',name:'陳怡君',title:'科長',team:'法遵一科'},
+  {id:'M2002',pw:'demo',tag:'主管 B',name:'林建宏',title:'科長',team:'法遵二科'}
+];
+
+function app(){
+  // ===== 區塊 5-B: 員工資料（主管 A 3 位、主管 B 3 位；皆為待評核的乾淨初始狀態） =====
+  const H=(y,g,c,s)=>({year:y,grade:g,comment:c,self:s});                                    // 考績歷史
+  const R=(d,r,dep,l,t,n)=>({date:d,reason:r,company:'永豐銀行',dept:dep,level:l,title:t,nature:n}); // 輪調經歷
+  const emps=[
+  /* ---------- 主管 A：陳怡君（法遵一科） ---------- */
+  { id:'E00201', mgr:'M2001', name:'張偉銘', age:38, company:'永豐銀行', unit:UNIT, level:8, jobTitle:'經理', groupYears:12, deptYears:7,
+    edu:'臺灣大學法律學系；臺灣大學法律研究所', prev:'會計師事務所金融業查核專員（3年）',
+    r:{self:8.6,peer:8.5,sub:8.7},
+    selfNote:'今年主導 AML 制度改版並如期上線；跨部門訓練因排程衝突未達 8 場，已列入明年改善。',
+    goals:[{k:'制度改版',t:'完成洗錢防制制度改版並於 Q3 前上線',w:40,self:100},{k:'內稽查核',t:'內部稽核查核缺失 ≤ 1 件',w:30,self:100},{k:'跨部門訓練',t:'全年辦理 8 場跨部門法遵訓練',w:30,self:75}],
+    history:[H(2025,'優','主導洗錢防制制度改版並如期上線，通過內稽查核零缺失；法規解析精準，跨部門溝通節奏仍可加強。','① 洗錢防制制度改版：Q3 如期上線，內稽查核缺失 0 件\n② 新法規衝擊評估：完成 8 項，業務單位諮詢平均 1.2 天內回覆\n③ 跨部門法遵訓練：辦理 5 場，已規劃明年補足'),
+             H(2024,'優','法規解析精準，能即時回應業務單位諮詢，對新進同仁的帶領可再主動。','① 新法規衝擊評估：完成 12 項，諮詢回覆時效 1.2 天\n② 法遵風險儀表板：完成需求訪談與雛形建置'),
+             H(2023,'特優','主管機關檢查期間表現突出，統籌資料彙整與應答，獲處級嘉獎。','① 主管機關檢查：統籌 6 個單位資料彙整，如期完成\n② 內規修訂：修訂 9 份內規，已公告施行')],
+    rotation:[R('2022-04-01','升等',UNIT,8,'經理','高級專業人員'),R('2019-09-01','內部輪調',UNIT,7,'襄理','專業人員'),R('2018-01-01','內部輪調','風險管理處',6,'專員','專業人員'),R('2014-07-01','到職',UNIT,6,'專員','專業人員')],
+    evidence:['制度改版上線日期與內稽查核 0 缺失報告','8 場訓練的實際辦理日期與參與單位','業務單位對諮詢回覆的具體回饋'],
+    focus:{
+      title:'目標達成 vs 質化事證',
+      text:'嗨，我先從資料裡挑出一個值得您定調的焦點，想和您對一下：張偉銘的「制度改版」與「內稽查核」自評都是滿分，事證也支持（如期上線、查核缺失 0 件）；但「全年 8 場跨部門訓練」自評 75%，實際約辦理 5 場（約 62%），360 的跨部門面向也略低於部門內。這個落差會影響您想怎麼講述他這一年的故事，您傾向先從哪個角度定調？',
+      A:{label:'立場 A｜業務成果優先（維持優等）',hint:'以制度改版與零缺失為主軸，協作面列為明年精進',grade:'優',
+         goal:[2,62,'實際辦理 5 場，約 62%（自評 75%）'],rate:[89,'依各目標與事證計算約 88.6%（員工自評 92.5%）'],
+         kpi:[[0,90,'AML 改版零缺失，專業度突出'],[1,88,'制度如期上線、內稽查核 0 缺失']],
+         body:'專業紮實，今年主導洗錢防制制度改版並於 Q3 如期上線，內稽查核缺失 0 件；另完成 8 項新法規衝擊評估，業務單位諮詢平均 1.2 天內回覆。跨部門訓練實際辦理 5 場（目標 8 場），已排定明年補足，整體貢獻屬優等。',
+         note:'跨部門訓練僅辦理 5 場（目標 8 場），但制度改版如期上線與內稽零缺失的成果占比較高，且已排定明年補足場次，故維持優等。'},
+      B:{label:'立場 B｜團隊協作成效優先（保守評甲上）',hint:'把協作與跨部門訓練放到主軸，等第穩健一級',grade:'甲上',
+         goal:[2,62,'實際辦理 5 場，約 62%（自評 75%）'],rate:[86,'較重視協作面，綜合約 86%'],
+         kpi:[[2,74,'跨部門評價低於部門內，先以事證為準'],[0,88,'專業能力維持高分']],
+         body:'專業能力與制度落地俱佳，今年完成洗錢防制制度改版並通過內稽查核。同時，跨部門訓練僅辦理 5 場（目標 8 場），跨部門協作評價低於部門內，列為明年首要精進項目；綜合成果與協作成效，給予甲上並期待明年回升。',
+         note:'成果面表現突出，惟跨部門訓練僅 5 場（目標 8 場）且跨部門協作評價低於部門內，故以協作成效加權評甲上，明年追蹤回升。'}}},
+  { id:'E00202', mgr:'M2001', name:'李雅婷', age:33, company:'永豐銀行', unit:UNIT, level:7, jobTitle:'襄理', groupYears:7, deptYears:3,
+    edu:'政治大學企業管理學系', prev:'外商銀行內控稽核專員（2年）',
+    r:{self:8.2,peer:7.4,sub:7.8},
+    selfNote:'內控自評專案如期完成，審查件數略低於目標，跨處回覆時效受會議排程影響。',
+    goals:[{k:'內控專案',t:'內控自評專案於 Q2 前完成',w:40,self:100},{k:'審查件數',t:'獨立審查案件 ≥ 90 件',w:30,self:100},{k:'回覆時效',t:'跨處案件平均回覆 ≤ 2 天',w:30,self:90}],
+    history:[H(2025,'甲上','承接內控自評專案並如期完成，審查品質穩定；跨處會議回覆時效有待提升。','① 內控自評專案：Q2 如期完成，涵蓋 14 個單位\n② 法遵審查：獨立審查 86 件，退件率 4%\n③ 跨處協作：參與 3 場聯席會議並彙整會議紀錄'),
+             H(2024,'甲上','學習速度快，已能獨立處理例行法遵審查，但較少主動提出流程改善。','① 例行法遵審查：獨立處理 70 件\n② 審查檢核表更新：協助修訂 2 份'),
+             H(2023,'甲','轉調新單位，適應期完成度達標，需持續熟悉法遵業務。','① 法遵業務訓練：完成 5 門必修課程\n② 審查協作：協助審查 25 件')],
+    rotation:[R('2024-01-01','升等',UNIT,7,'襄理','專業人員'),R('2023-03-01','內部輪調',UNIT,6,'專員','專業人員'),R('2019-07-01','到職','內部稽核處',6,'專員','專業人員')],
+    evidence:['內控自評專案的完成日期與涵蓋單位數','兩次延遲會議的原因與員工的補救作法','跨處同仁的具體回饋（正向或待改善皆可）'],
+    focus:{
+      title:'自評 vs 他評',
+      text:'嗨，我先挑出一個想和您對一下的焦點：李雅婷的自評 8.2、他評平均 7.6，差異 0.6；目標面她自評達成 97%，實際審查約 86 件、跨處回覆時效 3.1 天。這是貢獻還沒被充分看見，還是協作方式上有空間？您想先偏向哪個角度定調？',
+      A:{label:'立場 A｜業務成果優先（評甲上）',hint:'以專案成果與審查品質為主軸，自他評差異另做說明',grade:'甲上',
+         goal:[2,60,'兩次跨處會議延遲，平均回覆 3.1 天'],rate:[87,'依各目標計算約 86.8%（員工自評 97%）'],
+         kpi:[[1,84,'內控自評專案如期完成'],[0,82,'獨立審查 86 件，品質穩定']],
+         body:'承接內控自評專案並於 Q2 如期完成，涵蓋 14 個單位；獨立審查 86 件、退件率 4%，品質穩定。他評略低於自評，主要在跨處回覆時效（平均 3.1 天，目標 2 天），已於面談對齊期望並約定改善做法，整體成果扎實。',
+         note:'自評 8.2、他評 7.6 的差異主要來自跨處回覆時效，已於面談中對齊；專案成果與審查品質扎實，故評甲上。'},
+      B:{label:'立場 B｜團隊協作成效優先（保守評甲）',hint:'以他評與協作回饋為主軸，先保守一級並約定追蹤',grade:'甲',
+         goal:[2,60,'兩次跨處會議延遲，平均回覆 3.1 天'],rate:[82,'協作面考量較多，綜合約 82%'],
+         kpi:[[2,66,'他評 7.6，協作面先保守認定'],[3,80,'學習快、主動爭取專案']],
+         body:'內控自評專案如期完成，審查品質穩定，成長動能佳。惟自評與他評差異達 0.6，跨處回覆時效（平均 3.1 天）亦未達目標，協作表現尚待提升；本年度先給予甲，並與員工約定每季檢視協作回饋。',
+         note:'自評與他評差異 0.6，且回覆時效 3.1 天未達 2 天目標，故以協作面為重點評甲，約定每季檢視協作回饋。'}}},
+  { id:'E00203', mgr:'M2001', name:'王志豪', age:41, company:'永豐銀行', unit:UNIT, level:9, jobTitle:'資深經理', groupYears:12, deptYears:9,
+    edu:'政治大學財務金融研究所；政治大學經濟學系', prev:'證券公司風控部專員（4年）',
+    r:{self:7.8,peer:8.2,sub:9.1},
+    selfNote:'團隊培育與檢測計畫皆有進展，但自認達成程度有限；策略提案尚在草擬階段。',
+    goals:[{k:'團隊培育',t:'團隊零離職並培育 2 位同仁晉升',w:40,self:80},{k:'年度檢測',t:'完成年度法遵檢測計畫',w:30,self:85},{k:'策略提案',t:'提出 1 項策略性法遵議題提案',w:30,self:60}],
+    history:[H(2025,'優','帶領 5 人團隊完成年度法遵檢測，團隊零離職並培育 2 位同仁晉升，管理成熟；對高階溝通可再主動。','① 年度法遵檢測：如期完成，涵蓋 20 個營業單位\n② 團隊培育：離職率 0%，2 位成員晉升\n③ 策略提案：完成議題草案，尚待決策會議'),
+             H(2024,'優','制度規劃穩健，與業務單位關係良好，對高階溝通可再主動。','① 法遵風險儀表板：建置完成並導入月報\n② 業務單位溝通：辦理 4 場說明會'),
+             H(2023,'甲上','首年擔任主管職，逐步建立管理節奏，仍需強化授權。','① 主管職前訓練：完成 3 階段課程\n② 團隊目標管理：建立月會與追蹤機制')],
+    rotation:[R('2023-01-01','升等',UNIT,9,'資深經理','法遵主管'),R('2020-01-01','升等',UNIT,8,'經理','高級專業人員'),R('2017-06-01','內部輪調',UNIT,7,'襄理','專業人員'),R('2014-03-01','到職','風險管理處',6,'專員','專業人員')],
+    evidence:['2 位晉升同仁的名單與晉升時點','年度檢測的完成日期與涵蓋單位','策略提案目前進度與決策會議時程'],
+    focus:{
+      title:'自評偏保守 vs 他評偏高',
+      text:'嗨，這位的資料有個有趣的反差想和您對一下：王志豪自評 7.8、他評 8.7（部屬 9.1），自評目標達成率只有 75.5%；但團隊零離職、2 位成員晉升、年度檢測如期完成，事證其實比他自己的說法更亮眼。這個「自評低、事證高」的落差，您想怎麼定調？',
+      A:{label:'立場 A｜團隊成果與他評優先（評優）',hint:'以零離職、2 位晉升與高他評為主軸，自評偏保守另做說明',grade:'優',
+         goal:[0,100,'零離職且 2 位晉升，已達標'],rate:[91,'依各目標計算約 91%（員工自評 75.5%）'],
+         kpi:[[2,92,'部屬評價 9.1，領導與協作突出'],[1,88,'年度檢測如期完成']],
+         body:'帶領 5 人團隊如期完成年度法遵檢測（涵蓋 20 個營業單位），團隊零離職並培育 2 位同仁晉升；他評 8.7、部屬 9.1，管理成熟度高。自評偏保守，經面談確認成果已達標；策略提案已有草案，期許明年推進落地。',
+         note:'自評偏保守；零離職、2 位晉升與年度檢測如期完成，加上他評 8.7、部屬 9.1，一致支持優等，策略提案已有草案。'},
+      B:{label:'立場 B｜策略提案進度優先（穩健評甲上）',hint:'把尚未落地的策略提案放到主軸，先穩健一級並約定追蹤',grade:'甲上',
+         goal:[2,70,'已提出草案，尚未進入決策會議'],rate:[86,'策略提案尚未落地，綜合約 86%'],
+         kpi:[[3,76,'策略性議題參與度可再提升'],[1,84,'年度檢測如期完成']],
+         body:'團隊管理成熟，今年零離職並培育 2 位同仁晉升，年度法遵檢測如期完成。策略性議題提案目前仍為草案、尚未進入決策會議，本年度先以甲上定調，並與員工約定明年上半年落地後再評估提升。',
+         note:'管理與檢測成果穩健，但策略提案尚未進入決策會議，故先評甲上，並約定明年上半年落地後再評估提升。'}}},
+
+  /* ---------- 主管 B：林建宏（法遵二科） ---------- */
+  { id:'E00301', mgr:'M2002', name:'黃子晴', age:35, company:'永豐銀行', unit:UNIT, level:8, jobTitle:'經理', groupYears:7, deptYears:5,
+    edu:'臺灣大學資訊管理學系', prev:'證券公司教育訓練專員（3年）',
+    r:{self:8.0,peer:7.6,sub:8.3},
+    selfNote:'新版課程如期上線，滿意度略低於目標，宣導覆蓋率受分行輪休影響未完全達標。',
+    goals:[{k:'課程上線',t:'新版法遵訓練課程於 Q2 上線',w:40,self:100},{k:'訓練滿意度',t:'訓練滿意度 ≥ 4.5（滿分 5）',w:30,self:90},{k:'宣導覆蓋率',t:'內規宣導覆蓋率 ≥ 95%',w:30,self:85}],
+    history:[H(2025,'優','主導新版法遵訓練課程如期上線，完訓率 98%；學員滿意度略低於目標，教材案例化可再加強。','① 新版法遵訓練課程：Q2 上線，涵蓋 22 個單位\n② 學員滿意度：4.2（目標 4.5）\n③ 內規宣導：覆蓋率 88%'),
+             H(2024,'甲上','規劃穩健，能整合各單位需求，訓練成效追蹤機制可再完善。','① 年度訓練計畫：完成 18 門課程\n② 需求盤點：彙整 6 個單位訓練需求'),
+             H(2023,'甲上','晉升後迅速上手，能獨立規劃訓練專案。','① 新進人員法遵訓練：辦理 6 梯次\n② 訓練教材更新：改版 5 份')],
+    rotation:[R('2025-01-01','升等',UNIT,8,'經理','高級專業人員'),R('2023-04-01','升等',UNIT,7,'襄理','專業人員'),R('2021-10-01','內部輪調',UNIT,6,'專員','專業人員'),R('2019-06-01','到職','教育發展部',6,'專員','專業人員')],
+    evidence:['課程上線日期與完訓率報表','學員滿意度問卷的原始回饋摘要','宣導覆蓋率未達標的分行名單與原因'],
+    focus:{
+      title:'量化目標 vs 質化事證',
+      text:'嗨，我先挑出一個想和您對一下的焦點：黃子晴自評目標達成約 92.5%，新版課程如期上線、完訓率 98%；不過學員滿意度實際 4.2（目標 4.5），質化回饋提到「案例偏法條導向」。量化成果與學員的聲音有些出入，您想怎麼拿捏這一年的定調？',
+      A:{label:'立場 A｜業務成果優先（維持優等）',hint:'以如期上線與高完訓率為主軸，滿意度列為下半年改版重點',grade:'優',
+         goal:[1,93,'滿意度 4.2／4.5，約 93%'],rate:[96,'依各目標計算約 95.8%（員工自評 92.5%）'],
+         kpi:[[1,88,'課程如期上線，完訓率 98%'],[0,86,'課程設計與法規轉譯能力穩定']],
+         body:'主導新版法遵訓練課程於 Q2 如期上線，全年完訓率 98%、涵蓋 22 個單位，內規宣導覆蓋率達 88%。學員滿意度 4.2（目標 4.5），回饋期待更多實務案例，已排入下半年教材改版；整體成果穩定，維持優等。',
+         note:'滿意度 4.2 未達 4.5，但課程如期上線、完訓率 98%，且教材改版已排入下半年，故維持優等。'},
+      B:{label:'立場 B｜學員回饋與落地成效優先（保守評甲上）',hint:'把滿意度與案例不足放到主軸，先穩健一級並追蹤回升',grade:'甲上',
+         goal:[1,93,'滿意度 4.2／4.5，約 93%'],rate:[92,'學員回饋面較審慎，綜合約 92%'],
+         kpi:[[3,76,'教材創新與案例化仍有空間'],[1,84,'課程如期上線']],
+         body:'新版法遵訓練課程如期上線，完訓率 98%。學員滿意度 4.2 未達 4.5 目標，回饋集中在案例不足，顯示成效轉化仍有空間；本年度以甲上定調，請員工於下半年完成教材改版並追蹤滿意度回升。',
+         note:'學員滿意度 4.2 未達目標且回饋集中於案例不足，故以落地成效為重點評甲上，並追蹤改版後的回升。'}}},
+  { id:'E00302', mgr:'M2002', name:'吳承翰', age:36, company:'永豐銀行', unit:UNIT, level:9, jobTitle:'資深經理', groupYears:9, deptYears:9,
+    edu:'陽明交通大學資訊工程研究所；成功大學資訊工程學系', prev:'半導體設備公司軟體工程師（4年）',
+    r:{self:7.6,peer:8.4,sub:8.8},
+    selfNote:'監控模型優化有成，核心重構只完成兩項，輔導任務順利。',
+    goals:[{k:'監控模型',t:'AML 交易監控模型誤報率降低 20%',w:40,self:85},{k:'系統重構',t:'完成 3 項監控系統核心重構',w:30,self:70},{k:'後進輔導',t:'輔導 2 位同仁獨立維運',w:30,self:100}],
+    history:[H(2025,'優','主導 AML 監控模型優化，誤報率降幅約 24%；核心重構進度略延後，對外能見度可再提升。','① 監控模型優化：誤報率降低約 24%\n② 核心重構：完成 2 項，第 3 項延至明年\n③ 後進輔導：2 位同仁已獨立維運'),
+             H(2024,'優','技術判斷精準，是團隊的法遵科技支柱。','① 監控規則調校：新增 15 條情境規則\n② 維運制度：建立輪值與事故回顧機制'),
+             H(2023,'甲上','晉升後逐步承擔技術領導，跨團隊影響力持續建立。','① 監控系統升級：零停機完成\n② 新人輔導：帶領 1 位新進同仁')],
+    rotation:[R('2025-01-01','升等',UNIT,9,'資深經理','高級專業人員'),R('2022-09-01','升等',UNIT,8,'經理','高級專業人員'),R('2020-01-01','升等',UNIT,7,'襄理','專業人員'),R('2017-08-01','到職',UNIT,6,'專員','專業人員')],
+    evidence:['誤報率降幅的前後對照報表','第 3 項重構延後的原因與新時程','2 位同仁獨立維運的上線紀錄'],
+    focus:{
+      title:'自評偏保守 vs 他評偏高',
+      text:'嗨，我想和您對一個焦點：吳承翰自評 7.6、他評 8.6（部屬 8.8），自評達成率 85%；但誤報率實際降了約 24%，超過 20% 的目標，只有第 3 項重構延到明年。事證和自評之間有一段距離，您想怎麼定調？',
+      A:{label:'立場 A｜成果與他評優先（評優）',hint:'以誤報率降幅與高他評為主軸，重構延後另做說明',grade:'優',
+         goal:[0,100,'誤報率降幅約 24%，超過目標'],rate:[90,'依各目標計算約 90.1%（員工自評 85%）'],
+         kpi:[[0,92,'監控模型優化成效突出'],[2,90,'輔導 2 位同仁獨立維運']],
+         body:'主導 AML 監控模型優化，誤報率降低約 24%，超過 20% 目標；輔導 2 位同仁獨立維運，他評 8.6、部屬 8.8。自評偏保守；核心重構完成 2 項，第 3 項已排入明年，整體技術貢獻屬優等。',
+         note:'自評偏保守；誤報率降幅約 24% 已超過目標、輔導 2 位同仁獨立維運，他評 8.6，事證支持優等，第 3 項重構已排入明年。'},
+      B:{label:'立場 B｜重構進度優先（穩健評甲上）',hint:'把重構僅完成 2/3 放到主軸，先穩健一級並約定追蹤',grade:'甲上',
+         goal:[1,67,'完成 2 項，第 3 項延至明年'],rate:[87,'重構進度考量較多，綜合約 87%'],
+         kpi:[[3,78,'重構節奏可再提升'],[0,88,'監控模型優化成效佳']],
+         body:'監控模型優化成效突出（誤報率降低約 24%），並輔導 2 位同仁獨立維運。惟核心重構僅完成 2/3 項，進度略延後，本年度先以甲上定調，並約定第 3 項重構完成後再評估提升。',
+         note:'監控成效突出，但核心重構僅完成 2/3 項，故以重構進度為重點穩健評甲上，並約定明年完成後再評估提升。'}}},
+  { id:'E00303', mgr:'M2002', name:'鄭宜庭', age:32, company:'永豐銀行', unit:UNIT, level:7, jobTitle:'襄理', groupYears:7, deptYears:3,
+    edu:'東吳大學法律學系', prev:'律師事務所法務助理（2年）',
+    r:{self:8.1,peer:7.6,sub:7.9},
+    selfNote:'新產品審查品質與諮詢滿意度皆佳，審查時程偶有延遲，主因為需求變動。',
+    goals:[{k:'審查時效',t:'新產品法遵審查準時率 ≥ 90%',w:40,self:90},{k:'諮詢滿意度',t:'法規諮詢滿意度 ≥ 4.5',w:30,self:100},{k:'內規檢視',t:'完成 6 份內規檢視',w:30,self:100}],
+    history:[H(2025,'甲上','新產品法遵審查品質穩定，諮詢滿意度佳；審查準時率 78% 低於目標，需求對齊可更提早。','① 新產品法遵審查：完成 46 件，準時率 78%\n② 法規諮詢：滿意度 4.6\n③ 內規檢視：完成 6 份'),
+             H(2024,'甲上','加入法遵二科後迅速融入，能獨立處理例行審查。','① 例行審查：獨立處理 40 件\n② 審查檢核表：協助修訂 2 份'),
+             H(2023,'甲','轉調法令遵循處，適應期完成度達標，仍在熟悉審查流程。','① 法遵訓練：完成 5 門必修課程\n② 審查協作：協助審查 18 件')],
+    rotation:[R('2025-01-01','升等',UNIT,7,'襄理','專業人員'),R('2023-03-01','內部輪調',UNIT,6,'專員','專業人員'),R('2019-07-01','到職','零售金融處',6,'專員','專業人員')],
+    evidence:['新產品審查案件的準時／逾時清單','延遲案件的原因（需求變動或內部流程）','業務單位對審查的具體回饋'],
+    focus:{
+      title:'自評 vs 他評',
+      text:'嗨，我先挑出一個想和您對一下的焦點：鄭宜庭自評 8.1、他評平均 7.8，差異 0.3；目標面「審查準時率」自評 90%，實際是 78%，其他兩項（諮詢滿意度、內規檢視）則表現不錯。準時率是落差最大的一項，您想如何定調？',
+      A:{label:'立場 A｜業務成果優先（評甲上）',hint:'以審查品質、諮詢滿意度與內規檢視為主軸，準時率另做說明',grade:'甲上',
+         goal:[0,87,'準時率 78%／90%，約 87%'],rate:[95,'依各目標計算約 94.8%（員工自評 97%）'],
+         kpi:[[1,82,'諮詢滿意度與內規檢視皆達標'],[0,80,'法規判讀紮實']],
+         body:'新產品法遵審查完成 46 件，品質穩定；法規諮詢滿意度 4.6，內規檢視 6 份全數完成。審查準時率 78%（目標 90%）有改善空間，已與員工對齊提早確認需求的做法；整體成果穩定，給予甲上。',
+         note:'審查準時率 78%（目標 90%）有落差，但諮詢滿意度 4.6、內規檢視全數完成，成果面穩定，故評甲上。'},
+      B:{label:'立場 B｜團隊協作與時程優先（保守評甲）',hint:'以他評與準時率為主軸，先保守一級並約定逐月追蹤',grade:'甲',
+         goal:[0,87,'準時率 78%／90%，約 87%'],rate:[90,'協作與時程面考量較多，綜合約 90%'],
+         kpi:[[2,66,'他評 7.8，協作與時程先保守認定'],[1,76,'審查準時率 78%']],
+         body:'法規判讀與諮詢品質佳，內規檢視全數完成。惟審查準時率僅 78%（目標 90%），且自評與他評差異達 0.7，協作與時程管理待加強；本年度先給予甲，並約定每月檢視逾時案件、期待明年提升。',
+         note:'自評 8.1、他評 7.8 差異 0.3，且準時率 78% 未達目標，故以協作與時程為重點評甲，約定每月檢視逾時案件。'}}}
+  ];
+
+  // ===== 區塊 5-C: 狀態工廠與 Alpine 根物件（所有員工初始皆為乾淨空白、待評核） =====
+  const mk=e=>({status:'todo',n:1,ln:0,fieldLn:0,log:[],fieldLog:[],draftSnapshot:null,perfDone:false,stance:null,skipped:false,
+    msgs:[{id:1,r:'a',t:e.focus.text,actions:[],chosen:null,
+           stances:[{k:'A',label:e.focus.A.label,hint:e.focus.A.hint},{k:'B',label:e.focus.B.label,hint:e.focus.B.hint}]}],
+    form:{perf:'',goals:e.goals.map(()=>({r:''})),overall:'',grade:'',kpis:defKpi(),adjustment:0,adjustmentTags:[],adjustmentReason:'',body:''}});
+  const st={}; emps.forEach(e=>st[e.id]=mk(e));
+
+  return {
+    emps, st, managers:MANAGERS, grades:GRADES, gc:GC, targetDistribution:TARGET_DISTRIBUTION, unitName:UNIT,
+    me:null, view:'login', listTab:'roster', filter:'全部', q:'',
+    aiOpen:window.innerWidth>=1024, logOpen:false, auditLogOpen:false, coachToolsOpen:false,
+    login:{id:'',pw:'',err:''},
+    selId:emps[0].id, tab:'A', typing:false, draft:'', hl:'', toast:false, toastMsg:'',
+    modal:{open:false,changes:[],reason:'',err:false},
+    auditModal:{open:false,items:[],src:'manual',msgId:null,aiIdxs:[],reason:'',err:false},
+    reasonChips:['與員工面談後發現新事證','同儕／他評回饋支持','有具體成果數據佐證','與 AI 討論後修正認定'],
+    filters:['全部','待評核','評核中','已送出'],
+    tabs:[{k:'A',l:'年度目標與自評'},{k:'B',l:'歷史考績（2023–2025）'},{k:'C',l:'360 評鑑（2025）'},{k:'D',l:'輪調經歷'}],
+    chips:[{k:'obs',l:'以我的主管觀察為主（幫我補強佐證）'},{k:'keep',l:'維持原評分（幫我準備人資防禦說明）'},{k:'skip',l:'跳過討論，直接採用目前填寫'}],
+    adjustmentOptions:['突發專案救援','跨團隊協作','重大風險預防','流程改善','人才培育','其他具體貢獻'],
+
+    get team(){ return this.me?this.emps.filter(e=>e.mgr===this.me.id):[] },
+    get emp(){ return this.emps.find(e=>e.id===this.selId)||this.emps[0] },
+    get s(){ return this.st[this.selId] },
+    deptName(){ return UNIT },
+
+    // ===== 區塊 5-D: 登入與頁面導覽 =====
+    quickLogin(m){ this.login.id=m.id; this.login.pw=m.pw; this.login.err='' },
+    doLogin(){
+      const m=MANAGERS.find(x=>x.id===this.login.id.trim().toUpperCase()&&x.pw===this.login.pw);
+      if(!m){ this.login.err='員編或密碼錯誤，請再試一次。'; return }
+      this.me=m; this.login={id:'',pw:'',err:''}; this.listTab='roster'; this.filter='全部'; this.q='';
+      this.selId=this.team[0].id; this.view='list'; window.scrollTo({top:0});
+    },
+    logout(){ this.me=null; this.view='login'; this.modal.open=false; this.auditModal.open=false },
+    open(id){
+      if(!this.team.some(e=>e.id===id)) return;
+      this.selId=id; this.tab='A';
+      this.view=this.st[id].perfDone?'detail':'performance';
+      this.aiOpen=this.view==='detail'&&window.innerWidth>=1024;
+      window.scrollTo({top:0});
+      if(this.view==='detail') this.scroll();
+    },
+    switchEmployee(){
+      this.tab='A';
+      this.view=this.s.perfDone?'detail':'performance';
+      this.aiOpen=this.view==='detail'&&window.innerWidth>=1024;
+      if(this.view==='detail') this.$nextTick(()=>this.scroll());
+    },
+    goDetail(){
+      const f=this.s.form;
+      if(f.goals.some(g=>g.r==='')){ this.flash('請先完成主管自主評價中的目標認定'); return }
+      if(!f.perf.trim()){ this.flash('請先完成今年表現摘要'); return }
+      this.s.perfDone=true; if(this.s.status==='todo') this.s.status='draft';
+      this.view='detail'; this.aiOpen=window.innerWidth>=1024; window.scrollTo({top:0}); this.scroll();
+    },
+    back(){ this.view='list'; this.listTab='roster'; window.scrollTo({top:0}) },
+    goCalib(){ this.view='list'; this.listTab='calib'; window.scrollTo({top:0}) },
+    nextPending(){ const n=this.team.find(e=>this.statusOf(e)!=='已送出'); if(n){this.open(n.id)}else{this.goCalib();this.flash('團隊皆已送出，來看看等第分布吧')} },
+
+    // ===== 區塊 5-E: 員工清單與檔案計算 =====
+    statusOf(e){
+      const x=this.st[e.id]; if(x.status==='done') return '已送出';
+      const f=x.form;
+      return x.status==='draft'||f.perf||f.body||f.grade||f.overall!==''||x.log.length||f.goals.some(g=>g.r!=='')||f.kpis.some(k=>k.s!=='')?'評核中':'待評核';
+    },
+    statusClass(e){ return {'已送出':'bg-emerald-50 text-emerald-700 border-emerald-200','評核中':'bg-amber-50 text-amber-700 border-amber-200','待評核':'bg-slate-100 text-slate-600 border-slate-200'}[this.statusOf(e)] },
+    countBy(f){ return f==='全部'?this.team.length:this.team.filter(e=>this.statusOf(e)===f).length },
+    visible(){ const q=this.q.trim().toLowerCase(); return this.team.filter(e=>(this.filter==='全部'||this.statusOf(e)===this.filter)&&(!q||e.name.includes(q)||e.id.toLowerCase().includes(q))) },
+    statCards(){ return [
+      {l:'團隊人數',v:this.team.length,c:'text-slate-900'},
+      {l:'已送出',v:this.countBy('已送出'),c:'text-emerald-600'},
+      {l:'評核中',v:this.countBy('評核中'),c:'text-amber-600'},
+      {l:'待評核',v:this.countBy('待評核'),c:'text-brand-700'}] },
+    gradeColor(g){return {'特優':'bg-brand-800 text-white','優':'bg-brand-100 text-brand-700','甲上':'bg-amber-50 text-amber-700','甲':'bg-slate-100 text-slate-600','乙':'bg-slate-600 text-white'}[g]||'bg-slate-100 text-slate-600'},
+    otherAvg(e){ return (e.r.peer+e.r.sub)/2 },
+    rows360(){const r=this.emp.r;return [{l:'個人自評',v:r.self,c:'bg-brand-600'},{l:'同儕平均',v:r.peer,c:'bg-brand-400'},{l:'部屬平均',v:r.sub,c:'bg-slate-600'},{l:'他評平均',v:this.otherAvg(this.emp),c:'bg-slate-400'}]},
+    gapOf(e){ return Math.round(Math.abs(this.otherAvg(e)-e.r.self)*10)/10 },
+    selfRate(e){ return e.goals.reduce((a,g)=>a+g.self*g.w,0)/e.goals.reduce((a,g)=>a+g.w,0) },
+    goalAvg(){
+      const rs=this.s.form.goals.map(g=>g.r).filter(r=>r!=='');
+      return rs.length?(rs.reduce((a,r)=>a+Number(r),0)/rs.length).toFixed(1):'—';
+    },
+    effRate(){ const o=this.s.form.overall; return o!==''?String(o):this.goalAvg() },
+    draftChangeValue(value,kind){
+      if(value===''||value==null) return '（未填寫）';
+      if(kind==='goal'||kind==='overall') return value+'%';
+      if(kind==='kpi') return value+' 分';
+      return String(value);
+    },
+    goalDiff(i){ const r=this.s.form.goals[i].r; if(r==='') return '—'; const d=r-this.emp.goals[i].self; return (d>0?'+':'')+d+' pp' },
+    goalDiffClass(i){ const r=this.s.form.goals[i].r; if(r==='') return 'text-slate-400'; const d=Math.abs(r-this.emp.goals[i].self); return d>=15?'text-brand-600 font-semibold':d>=8?'text-amber-600':'text-slate-500' },
+
+    // ===== 區塊 5-F: 評分表單與草稿儲存紀錄 =====
+    locked(){ return this.s.status==='done' },
+    dis(){ return this.locked() },
+    unlock(){ this.s.status='draft' },
+    scoreAverage(kpis){
+      const scored=kpis.filter(k=>k.s!=='');
+      const weight=scored.reduce((sum,k)=>sum+k.w,0);
+      return weight?scored.reduce((sum,k)=>sum+Number(k.s)*k.w,0)/weight:null;
+    },
+    avg(){
+      const score=this.scoreAverage(this.s.form.kpis);
+      return score===null?'—':score.toFixed(1);
+    },
+    finalScore(){
+      const base=this.scoreAverage(this.s.form.kpis);
+      return base===null?'—':(base+Number(this.s.form.adjustment||0)).toFixed(1);
+    },
+    adjustmentText(){
+      const value=Number(this.s.form.adjustment||0);
+      return (value>0?'+':'')+value.toFixed(1);
+    },
+    gradeFor(score){
+      if(score===null) return '';
+      return score>=90?'特優':score>=80?'優':score>=70?'甲上':score>=60?'甲':'乙';
+    },
+    updateAdjustment(){
+      const base=this.scoreAverage(this.s.form.kpis);
+      this.s.form.grade=this.gradeFor(base===null?null:base+Number(this.s.form.adjustment||0));
+    },
+    normalizeAdjustment(input){
+      const value=Number(input.value);
+      const normalized=Number.isFinite(value)?Math.min(10,Math.max(-10,value)):0;
+      this.s.form.adjustment=Math.round(normalized*10)/10;
+      input.value=this.s.form.adjustment;
+      if(this.s.form.adjustment===0){
+        this.s.form.adjustmentTags=[];
+        this.s.form.adjustmentReason='';
+      }
+      this.updateAdjustment();
+    },
+    toggleAdjustmentTag(tag){
+      const tags=this.s.form.adjustmentTags;
+      this.s.form.adjustmentTags=tags.includes(tag)?tags.filter(item=>item!==tag):[...tags,tag];
+    },
+    validateAdjustment(){
+      const f=this.s.form;
+      const adjustment=Number(f.adjustment||0);
+      if(!Number.isFinite(adjustment)||adjustment < -10||adjustment > 10){ this.flash('主管微調分必須介於 -10 至 +10 分'); return false }
+      if(adjustment===0) return true;
+      if(!f.adjustmentTags.length){ this.flash('主管微調分非 0，請至少選擇一個微調原因標籤'); return false }
+      if(!f.adjustmentReason.trim()){ this.flash('主管微調分非 0，請填寫具體事實理由'); return false }
+      return true;
+    },
+    avgOf(id){ const k=this.st[id].form.kpis; if(k.some(x=>x.s==='')) return null; return this.scoreAverage(k) },
+    prefixText(){ return this.emp.name+'該員' },
+    applyCommentSuggestion(suggestion){
+      if(this.locked()) return;
+      if(!suggestion){ this.flash('目前沒有可帶入的 AI 評語建議'); return }
+      this.askReason({items:[{kind:'comment',idx:null,from:this.cur('comment',null),to:suggestion}],src:'ai'});
+      this.jumpField('comment',null);
+    },
+    finishPerf(){
+      const f=this.s.form;
+      if(f.goals.some(g=>g.r==='')){ this.flash('請先填寫所有目標的主管認定達成率'); return }
+      if(!f.perf.trim()){ this.flash('請填寫今年表現摘要'); return }
+      this.s.perfDone=true;
+      this.goDetail();
+    },
+    draftFields(){
+      const f=this.s.form;
+      return [
+        {key:'perf',label:'今年表現摘要',kind:'text',value:f.perf},
+        ...f.goals.map((g,i)=>({key:'goal-'+i,label:'目標「'+this.emp.goals[i].k+'」達成率',kind:'goal',value:g.r})),
+        {key:'overall',label:'綜合達成率',kind:'overall',value:this.effRate()==='—'?'':this.effRate()},
+        ...f.kpis.map((k,i)=>({key:'kpi-'+i,label:k.n,kind:'kpi',value:k.s})),
+        {key:'adjustment',label:'主管微調分',kind:'adjustment',value:f.adjustment},
+        {key:'adjustment-tags',label:'微調原因標籤',kind:'text',value:f.adjustmentTags.slice()},
+        {key:'adjustment-reason',label:'微調具體事實理由',kind:'text',value:f.adjustmentReason},
+        {key:'grade',label:'績效等第',kind:'grade',value:f.grade},
+        {key:'comment',label:'考績評語',kind:'text',value:f.body}
+      ];
+    },
+    draftValues(){ return Object.fromEntries(this.draftFields().map(field=>[field.key,field.value])) },
+    draftChanges(previous,current){
+      return this.draftFields().filter(field=>String(previous[field.key]??'')!==String(current[field.key]??''))
+        .map(field=>({...field,from:previous[field.key]??'',to:current[field.key]??''}));
+    },
+    saveDraft(){
+      if(this.locked()) return;
+      if(!this.validateAdjustment()) return;
+      const current=this.draftValues(), s=this.s;
+      if(s.draftSnapshot===null){
+        s.log.unshift({id:++s.ln,time:new Date().toLocaleString('zh-TW'),initial:true,changes:[],reason:''});
+        s.draftSnapshot=current; s.status='draft';
+        if(this.view==='performance') s.perfDone=true;
+        this.flash('草稿已儲存，可繼續修改；送出前仍可編輯');
+        return;
+      }
+      const changes=this.draftChanges(s.draftSnapshot,current);
+      // 內容沒有變更時，直接完成儲存流程，不要求填寫修改理由。
+      if(!changes.length){
+        s.log.unshift({id:++s.ln,time:new Date().toLocaleString('zh-TW'),initial:false,changes:[],reason:''});
+        s.draftSnapshot=current; s.status='draft';
+        if(this.view==='performance') s.perfDone=true;
+        this.flash('草稿已儲存，內容沒有變更');
+        return;
+      }
+      this.modal={open:true,changes,reason:'',err:false};
+    },
+    confirmDraftSave(){
+      if(!this.validateAdjustment()) return;
+      const reason=this.modal.reason.trim();
+      if(!reason){ this.modal.err=true; return }
+      const s=this.s, current=this.draftValues();
+      s.log.unshift({id:++s.ln,time:new Date().toLocaleString('zh-TW'),initial:false,
+        changes:this.draftChanges(s.draftSnapshot,current),reason});
+      s.draftSnapshot=current; s.status='draft'; this.modal.open=false;
+      if(this.view==='performance') s.perfDone=true;
+      this.flash('草稿已儲存，修改內容與理由已記錄');
+    },
+    cancelDraftSave(){ this.modal.open=false },
+    reset(){   // 重設：清空本員評分表單與紀錄，保留對話
+      const e=this.emp, old=this.s, fresh=mk(e);
+      fresh.msgs=old.msgs; fresh.n=old.n; fresh.stance=old.stance; fresh.skipped=old.skipped;
+      this.st[e.id]=fresh;
+    },
+    cur(kind,idx){ const f=this.s.form; return kind==='kpi'?f.kpis[idx].s:kind==='goal'?f.goals[idx].r:kind==='overall'?f.overall:kind==='grade'?f.grade:kind==='adjustment'?f.adjustment:f.body },
+    raw(kind,idx,val){
+      const f=this.s.form;
+      if(kind==='kpi'){ f.kpis[idx].s=val; this.updateAdjustment() }
+      else if(kind==='goal')f.goals[idx].r=val;
+      else if(kind==='overall')f.overall=val;
+      else if(kind==='grade')f.grade=val;
+      else if(kind==='adjustment'){ f.adjustment=Number(val)||0; this.updateAdjustment() }
+      else f.body=val;
+    },
+    labelOf(kind,idx){ return kind==='kpi'?KPIS[idx].n:kind==='goal'?'目標「'+this.emp.goals[idx].k+'」達成率':{overall:'綜合達成率',grade:'績效等第',comment:'考績評語',adjustment:'主管微調分'}[kind] },
+    fmt(v,kind){ if(v===''||v==null) return '—'; if(kind==='comment') return '評語內容'; return (kind==='goal'||kind==='overall')?v+'%':v },
+    showVal(a){ return a.kind==='comment'?'評語草稿':a.kind==='kpi'?a.val+' 分':(a.kind==='goal'||a.kind==='overall')?a.val+'%':a.val },
+    setField(kind,idx,val,src,msgId,aiIdx,reason=''){
+      const from=this.cur(kind,idx), s=this.s;
+      this.raw(kind,idx,val);
+      s.fieldLog.unshift({id:++s.fieldLn,kind,idx,label:this.labelOf(kind,idx),from,to:val,src,msgId:msgId||null,aiIdx:aiIdx??null,reason,
+        changedAt:Date.now(),time:new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})});
+      if(s.status==='todo') s.status='draft';
+    },
+    lastLog(kind,idx){ return this.s.fieldLog.find(l=>l.kind===kind&&(idx==null||l.idx===idx)) },
+    manual(kind,idx,raw,el){
+      const from=this.cur(kind,idx);
+      const precision=kind==='overall'?10:1;
+      const val=kind==='grade'?raw:(raw===''?'':Math.min(100,Math.max(0,Math.round(Number(raw)*precision)/precision)));
+      if((val!==''&&kind!=='grade'&&Number.isNaN(val))||String(from)===String(val)){ el.value=from; return }
+      if(from===''||from==null){ this.setField(kind,idx,val,'manual',null,null,'初次填寫'); return }
+      el.value=from;
+      this.askReason({items:[{kind,idx,from,to:val}],src:'manual'});
+    },
+    askReason({items,src,msgId=null,aiIdxs=[]}){
+      const needsReason=[];
+      items.forEach((it,i)=>{
+        const last=this.lastLog(it.kind,it.idx), age=last?.changedAt==null?Infinity:Date.now()-last.changedAt;
+        if(it.from===''||it.from==null||(age>=0&&age<=REASON_FREE_WINDOW)){
+          this.setField(it.kind,it.idx,it.to,src,msgId,aiIdxs[i]??null,it.from===''||it.from==null?'初次填寫':'短時間內修正（可能誤填）');
+        } else {
+          needsReason.push({item:it,aiIdx:aiIdxs[i]??null});
+        }
+      });
+      if(!needsReason.length) return;
+      this.auditModal={open:true,items:needsReason.map(x=>x.item),src,msgId,aiIdxs:needsReason.map(x=>x.aiIdx),reason:'',err:false};
+    },
+    cancelReason(){ this.auditModal.open=false },
+    confirmReason(){
+      const md=this.auditModal, reason=md.reason.trim();
+      if(reason.length<4){ md.err=true; return }
+      md.items.forEach((it,i)=>this.setField(it.kind,it.idx,it.to,md.src,md.msgId,md.aiIdxs[i]??null,reason));
+      const last=md.items[md.items.length-1]; md.open=false;
+      if(last) this.$nextTick(()=>this.jumpField(last.kind,last.idx));
+    },
+    applyFields({items,src,msgId=null,aiIdxs=[]}){
+      this.askReason({items,src,msgId,aiIdxs});
+    },
+
+    // ===== 區塊 5-G: 送出考核 =====
+    submit(){
+      const s=this.s, f=s.form;
+      if(!this.validateAdjustment()) return;
+      if(f.goals.some(g=>g.r==='')){ this.flash('請先填寫所有目標的主管認定達成率'); return }
+      if(!f.perf.trim()){ this.flash('請填寫今年表現摘要'); return }
+      if(f.kpis.some(k=>k.s==='')){ this.flash('請完成所有細分指標評分'); return }
+      if(!f.grade){ this.flash('請完成細分指標評分以判定績效等第'); return }
+      if(!f.body.trim()){ this.flash('請填寫考績評語'); return }
+      s.status='done';
+      this.flash('考核儲存成功，已送交人資複審');
+    },
+    flash(m){ this.toastMsg=m; this.toast=true; clearTimeout(this._tt); this._tt=setTimeout(()=>this.toast=false,2800) },
+
+    // ============================================================
+    // ===== 6. AI 智慧教練與雙主管連動邏輯 =====
+    // ============================================================
+
+    // ===== 區塊 6-A: 開場焦點與立場定調 =====
+    // 開場訊息（msgs[0]）由 mk() 依 emp.focus 產生：點出 1 個核心校準爭議點 + 2 個立場選項
+    chooseStance(m,k){
+      if(this.locked()) return;
+      const e=this.emp, s=this.s, f=e.focus[k];
+      m.chosen=k; s.stance=k; s.skipped=false;
+      s.msgs.push({id:++s.n,r:'u',t:'我先選「'+f.label+'」'});
+      const acts=[
+        {kind:'goal',idx:f.goal[0],val:f.goal[1],label:'目標「'+e.goals[f.goal[0]].k+'」達成率',why:f.goal[2]},
+        {kind:'overall',val:f.rate[0],label:'綜合達成率（對話校準）',why:f.rate[1]},
+        ...f.kpi.map(x=>({kind:'kpi',idx:x[0],val:x[1],label:KPIS[x[0]].n,why:x[2]})),
+        {kind:'comment',val:f.body,label:'考績評語（人資複審防禦版草稿）',why:f.body}];
+      this.pushAi('好的，我們以「'+f.label.split('｜')[1]+'」來定調。我備了一份草稿，目標是讓人資複審時一眼看到依據，也預先回應同儕落差可能的追問：\n「'+f.note+'」\n\n以下都只是建議，採納哪幾項、改多少，都由您決定。'
+        +'\n若想換個角度，隨時可以在上方改選另一個立場。',acts);
+    },
+
+    // ===== 區塊 6-B: 指導型 Prompt Chips 與自由輸入 =====
+    coach(k){
+      const e=this.emp, s=this.s, f=s.form;
+      s.msgs.push({id:++s.n,r:'u',t:this.chips.find(c=>c.k===k).l});
+      if(k==='obs'){
+        this.pushAi('沒問題，這一輪以您的主管觀察為主，我來幫您把佐證補強。可以從這幾個角度補上具體事實（時間、事件、結果）：\n'
+          +e.evidence.map((x,i)=>(i+1)+'. '+x).join('\n')
+          +'\n\n您補上 1–2 個事例後，我會直接嵌進評語草稿；也可以直接在下方輸入。');
+      } else if(k==='keep'){
+        const key=s.stance||'A', fc=e.focus[key];
+        const rate=this.effRate()==='—'?'尚未填寫':this.effRate()+'%';
+        this.pushAi('好的，維持您目前的評分。我整理了一份給人資複審的說明，您可以直接複製、再依需要調整：\n\n'
+          +'① 評定依據：'+(f.grade?'目前等第「'+f.grade+'」':'等第將依指標分數自動判定')+'，指標綜合分數 '+this.avg()+'，目標達成率 '+rate+'（員工自評 '+this.selfRate(e).toFixed(1)+'%）。\n'
+          +'② 自他評對照：自評 '+e.r.self+'、他評 '+this.otherAvg(e).toFixed(1)+'（差異 '+this.gapOf(e).toFixed(1)+'），已納入考量，並於面談中對齊。\n'
+          +'③ 預先回應：'+fc.note+'\n'
+          +'④ 後續追蹤：與員工約定年中檢視改善進度並留下紀錄。'
+          +(s.stance?'':'\n\n（您還沒選定立場，③ 暫以立場 A 的說明為底稿，可從上方立場卡片切換。）'));
+      } else {
+        s.skipped=true; s.stance=null;
+        this.pushAi('了解，主導權在您。我先不再追問，這段討論會記錄為「主管直接定調」。您可以同時填寫「① 今年表現」與「② 評分」，需要時隨時再叫我。');
+      }
+    },
+    send(){   // 主管輸入具體事例或指導 AI：AI 把事例當作佐證嵌入草稿，不改變主管的定調方向
+      const t=this.draft.trim(); if(!t) return;
+      const e=this.emp, s=this.s, k=s.stance||'A', fc=e.focus[k];
+      s.msgs.push({id:++s.n,r:'u',t}); this.draft='';
+      const snippet=t.length>60?t.slice(0,60)+'…':t;
+      this.pushAi('收到，這個事例很有用，我會當作佐證放進草稿，不改變您原本的定調方向。以下是納入後的評語版本：'
+        +(s.stance?'':'\n（目前以立場 A 為底稿；若想以立場 B 為底，可從上方立場卡片切換。）'),
+        [{kind:'comment',val:fc.body+'另據主管觀察：'+snippet+'。',label:'考績評語（含您的補充事例）',why:fc.body+'另據主管觀察：'+snippet+'。'}]);
+    },
+
+    // ===== 區塊 6-C: AI 對話 ↔ 評分連動（套用／跳轉） =====
+    isApplied(m,ai){ return this.s.fieldLog.some(l=>l.msgId===m.id&&l.aiIdx===ai) },
+    pendingCount(m){ return (m.actions||[]).filter((a,i)=>a.kind!=='comment'&&!this.isApplied(m,i)).length },
+    pendingTotal(){ const s=this.s; return s.msgs.reduce((a,m)=>a+this.pendingCount(m),0)+((s.msgs[0]&&s.msgs[0].chosen===null&&!s.skipped)?1:0) },
+    apply(m,ai){
+      if(this.locked()){ this.flash('已送交，請先撤回再調整'); return }
+      const a=m.actions[ai];
+      this.applyFields({items:[{kind:a.kind,idx:a.idx,from:this.cur(a.kind,a.idx),to:a.val}],src:'ai',msgId:m.id,aiIdxs:[ai]});
+    },
+    applyAll(m){
+      if(this.locked()) return;
+      const idxs=m.actions.map((a,i)=>a.kind!=='comment'&&!this.isApplied(m,i)?i:-1).filter(i=>i>=0);
+      if(!idxs.length) return;
+      this.applyFields({items:idxs.map(i=>{const a=m.actions[i];return {kind:a.kind,idx:a.idx,from:this.cur(a.kind,a.idx),to:a.val}}),src:'ai',msgId:m.id,aiIdxs:idxs});
+    },
+    mark(key){ this.hl=key; clearTimeout(this._t); this._t=setTimeout(()=>this.hl='',2200) },
+    hlc(key){ return this.hl===key?'ring-2 ring-inset ring-amber-400 bg-amber-50':'' },
+    jumpField(kind,idx){
+      if(window.innerWidth<1024) this.aiOpen=false;   // 手機：收起 AI 面板以顯示欄位
+      const key=kind==='kpi'?'kpi-'+idx:kind==='goal'?'goal-'+idx:kind;
+      this.$nextTick(()=>{
+        const el=document.getElementById('fld-'+key); if(!el) return;
+        el.scrollIntoView({behavior:'smooth',block:'center'}); this.mark(key);
+      });
+    },
+    jumpMsg(id){
+      const go=()=>{ const el=document.getElementById('msg-'+this.selId+'-'+id); if(!el) return; el.scrollIntoView({behavior:'smooth',block:'center'}); this.mark('m'+id) };
+      if(!this.aiOpen){ this.aiOpen=true; this.$nextTick(()=>setTimeout(go,260)) } else go();
+    },
+    pushAi(text,actions=[],delay=900){
+      const s=this.s; this.typing=true; this.scroll();
+      const commentText=(actions||[]).find(action=>action.kind==='comment')?.val||'';
+      setTimeout(()=>{ this.typing=false; s.msgs.push({id:++s.n,r:'a',t:text,actions,commentDraft:!!commentText,commentText}); this.scroll() },delay);
+    },
+    scroll(){ this.$nextTick(()=>{ const c=this.$refs.chat; if(c) c.scrollTop=c.scrollHeight }) },
+
+    // ===== 區塊 6-D: 雙主管分布統計（完全依據兩位主管實際送出的真實考績） =====
+    mgrRows(){
+      const rows=MANAGERS.map(m=>{
+        const team=this.emps.filter(e=>e.mgr===m.id), c={}; GRADES.forEach(g=>c[g]=0);
+        let draftN=0,liveN=0;
+        team.forEach(e=>{
+          const x=this.st[e.id];
+          let grade='';
+          if(x.status==='done') grade=x.form.grade;
+          else if(e.id===this.selId&&this.me&&this.me.id===m.id&&(x.form.grade||x.fieldLog.some(l=>l.kind==='kpi'))){
+            grade=x.form.grade;
+            if(GRADES.includes(grade)&&x.draftSnapshot){
+              draftN++;
+              if(String(x.form.grade)!==String(x.draftSnapshot.grade||'')) liveN++;
+            } else if(GRADES.includes(grade)) liveN++;
+          } else if(x.draftSnapshot){
+            grade=x.draftSnapshot.grade;
+            if(GRADES.includes(grade)) draftN++;
+          }
+          if(GRADES.includes(grade)) c[grade]++;
+        });
+        const n=GRADES.reduce((a,g)=>a+c[g],0), me=!!this.me&&this.me.id===m.id;
+        return {key:m.id,name:m.name,tag:m.tag,me,isAll:false,c,n,size:team.length,draftN,liveN,
+          label:m.tag+'・'+m.name+'（'+m.team+'）'+(me?'・我':''),
+          avg:n?GRADES.reduce((a,g)=>a+c[g]*GSCORE[g],0)/n:null};
+      });
+      const tot={}; GRADES.forEach(g=>tot[g]=rows.reduce((a,r)=>a+r.c[g],0));
+      const n=rows.reduce((a,r)=>a+r.n,0);
+      rows.push({key:'all',name:'全處合計',tag:'',me:false,isAll:true,c:tot,n,size:rows.reduce((a,r)=>a+r.size,0),
+        draftN:rows.reduce((a,r)=>a+r.draftN,0),liveN:rows.reduce((a,r)=>a+r.liveN,0),label:'全處合計',
+        avg:n?GRADES.reduce((a,g)=>a+tot[g]*GSCORE[g],0)/n:null});
+      return rows;
+    },
+    pct(r,g){ return r.n?r.c[g]/r.n*100:0 },
+    draftGradePct(g){
+      const row=this.mgrRows().find(r=>r.me);
+      return row?this.pct(row,g):0;
+    },
+    draftGradeCount(){
+      const row=this.mgrRows().find(r=>r.me);
+      return row?row.n:0;
+    },
+    draftCounts(){
+      const row=this.mgrRows().find(r=>r.me);
+      return row?row.n+' 位有等第（含 '+row.draftN+' 份已儲存草稿、'+row.liveN+' 位目前編輯）':'目前無本團隊資料';
+    },
+    draftDeviations(row){
+      if(!row||!row.n) return [];
+      return GRADES.filter(g=>Math.abs(this.pct(row,g)-TARGET_DISTRIBUTION[g])>=TARGET_DEVIATION_THRESHOLD)
+        .map(grade=>({grade,pct:this.pct(row,grade),diff:Math.abs(this.pct(row,grade)-TARGET_DISTRIBUTION[grade])}));
+    },
+
+    lowestRatedEmployee(){
+      return this.team.map(e=>{
+        const x=this.st[e.id];
+        const isEditing=e.id===this.selId&&(x.form.grade||x.fieldLog.some(l=>l.kind==='kpi'));
+        const grade=x.status==='done'?x.form.grade:isEditing?x.form.grade:x.draftSnapshot?.grade;
+        const base=this.scoreAverage(x.form.kpis);
+        const score=base===null?null:base+Number(x.form.adjustment||0);
+        return {employee:e,grade,score};
+      }).filter(item=>GRADES.includes(item.grade))
+        .sort((a,b)=>GSCORE[a.grade]-GSCORE[b.grade]||(a.score??0)-(b.score??0))[0]||null;
+    },
+    calibWarning(){
+      const row=this.mgrRows().find(item=>item.me);
+      if(!row||!row.n) return '';
+      const highGrades=['特優','優'];
+      const actualHigh=highGrades.reduce((sum,g)=>sum+this.pct(row,g),0);
+      const targetHigh=highGrades.reduce((sum,g)=>sum+TARGET_DISTRIBUTION[g],0);
+      const deviation=this.draftDeviations(row);
+      if(actualHigh-targetHigh<TARGET_DEVIATION_THRESHOLD&&!deviation.length) return '';
+      const lowest=this.lowestRatedEmployee();
+      const suggestion=lowest?'建議優先檢視 '+lowest.employee.name+(lowest.score===null?'':'（'+lowest.score.toFixed(1)+' 分）')+'。':'建議檢視目前團隊評等。';
+      if(actualHigh-targetHigh>=TARGET_DEVIATION_THRESHOLD) return '優等以上比例偏高，'+suggestion;
+      const largest=deviation.sort((a,b)=>b.diff-a.diff)[0];
+      return largest.grade+'比例'+(largest.pct>TARGET_DISTRIBUTION[largest.grade]?'偏高':'偏低')+'，'+suggestion;
+    },
+    calibAlertCount(){ return this.calibWarning()?1:0 }
+  }
+}
+</script>
+</body>
+</html>
+
+
